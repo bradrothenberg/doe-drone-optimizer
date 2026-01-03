@@ -21,29 +21,29 @@ class DOEDataLoader:
 
     # Define column mappings from doe_summary.csv
     INPUT_FEATURES = [
-        'LOA In',           # Length Overall (inches)
-        'Span',             # Wing Span (inches)
-        'LE Sweep P1',      # Leading Edge Sweep Panel 1 (degrees)
-        'LE Sweep P2',      # Leading Edge Sweep Panel 2 (degrees)
-        'TE Sweep P1',      # Trailing Edge Sweep Panel 1 (degrees)
-        'TE Sweep P2',      # Trailing Edge Sweep Panel 2 (degrees)
-        'Panel Break Span %' # Panel break location (fraction)
+        'loa',              # Length Overall (inches)
+        'span',             # Wing Span (inches)
+        'le_sweep_p1',      # Leading Edge Sweep Panel 1 (degrees)
+        'le_sweep_p2',      # Leading Edge Sweep Panel 2 (degrees)
+        'te_sweep_p1',      # Trailing Edge Sweep Panel 1 (degrees)
+        'te_sweep_p2',      # Trailing Edge Sweep Panel 2 (degrees)
+        'panel_break'       # Panel break location (fraction)
     ]
 
     PRIMARY_OUTPUTS = [
-        'Range (nm)',       # Range in nautical miles
-        'Endurance (hr)',   # Endurance in hours
-        'MTOW (lbm)',       # Max Takeoff Weight in pounds
-        'Material Cost ($)' # Material cost in USD
+        'range_nm',             # Range in nautical miles
+        'endurance_hr',         # Endurance in hours
+        'mtow_lbm',             # Max Takeoff Weight in pounds
+        'material_cost_usd'     # Material cost in USD
     ]
 
     ADDITIONAL_OUTPUTS = [
-        'L/D Cruise',
-        'L/D Max',
-        'Aspect Ratio',
-        'Fuel Fraction',
-        'Static Margin (%)',
-        'Wingtip Deflection (in)'
+        'ld_cruise',
+        'ld_max',
+        'aspect_ratio',
+        'fuel_fraction',
+        'static_margin_pct',
+        'wingtip_deflection_in'
     ]
 
     def __init__(self, data_path: str = None):
@@ -101,7 +101,7 @@ class DOEDataLoader:
         logger.info("Cleaning data...")
 
         # Remove designs with zero or negative range (infeasible)
-        mask_feasible = self.df_raw['Range (nm)'] > 0
+        mask_feasible = self.df_raw['range_nm'] > 0
         n_removed = (~mask_feasible).sum()
 
         self.df_clean = self.df_raw[mask_feasible].copy()

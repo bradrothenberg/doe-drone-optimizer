@@ -239,7 +239,7 @@ def analyze_feature_correlations(X: np.ndarray, y: np.ndarray, feature_names: li
 
 if __name__ == "__main__":
     # Test feature engineering
-    from backend.app.models.data_loader import load_doe_data
+    from app.models.data_loader import load_doe_data
 
     print("Loading DOE data...")
     loader, X_train, X_val, X_test, y_train, y_val, y_test = load_doe_data()

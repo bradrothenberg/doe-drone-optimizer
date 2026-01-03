@@ -9,8 +9,8 @@ from typing import Tuple, Dict, Any
 import logging
 import json
 
-from backend.app.models.xgboost_model import XGBoostDroneModel
-from backend.app.models.neural_model import NeuralNetworkDroneModel
+from app.models.xgboost_model import XGBoostDroneModel
+from app.models.neural_model import NeuralNetworkDroneModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -339,10 +339,10 @@ def optimize_ensemble_weights(
 
 if __name__ == "__main__":
     # Test ensemble model
-    from backend.app.models.data_loader import load_doe_data
-    from backend.app.models.feature_engineering import engineer_features
-    from backend.app.models.xgboost_model import train_xgboost_model
-    from backend.app.models.neural_model import train_neural_network_model
+    from app.models.data_loader import load_doe_data
+    from app.models.feature_engineering import engineer_features
+    from app.models.xgboost_model import train_xgboost_model
+    from app.models.neural_model import train_neural_network_model
 
     print("Loading DOE data...")
     loader, _, _, _, _, _, _ = load_doe_data()

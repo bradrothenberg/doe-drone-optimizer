@@ -88,24 +88,10 @@ class XGBoostDroneModel:
         logger.info("Training XGBoost model...")
         logger.info(f"Training data shape: X={X_train.shape}, y={y_train.shape}")
 
-        # Prepare early stopping evaluation set
-        if X_val is not None and y_val is not None:
-            eval_set = [(X_val, y_val)]
-            logger.info(f"Validation data shape: X={X_val.shape}, y={y_val.shape}")
-        else:
-            eval_set = None
-            logger.warning("No validation set provided, early stopping disabled")
-
         # Train model (MultiOutputRegressor trains one model per output)
-        if eval_set is not None:
-            # Configure early stopping for each estimator
-            fit_params = {
-                'eval_set': eval_set,
-                'verbose': False
-            }
-            self.model.fit(X_train, y_train, **fit_params)
-        else:
-            self.model.fit(X_train, y_train)
+        # Note: MultiOutputRegressor doesn't support eval_set directly,
+        # so we'll train without early stopping for now
+        self.model.fit(X_train, y_train)
 
         self.is_fitted = True
 
@@ -297,8 +283,8 @@ def train_xgboost_model(
 
 if __name__ == "__main__":
     # Test XGBoost model
-    from backend.app.models.data_loader import load_doe_data
-    from backend.app.models.feature_engineering import engineer_features
+    from app.models.data_loader import load_doe_data
+    from app.models.feature_engineering import engineer_features
 
     print("Loading DOE data...")
     loader, X_train, X_val, X_test, y_train, y_val, y_test = load_doe_data()

@@ -145,8 +145,7 @@ class NeuralNetworkDroneModel:
             self.optimizer,
             mode='min',
             factor=0.5,
-            patience=10,
-            verbose=True
+            patience=10
         )
 
         self.is_fitted = False
@@ -429,8 +428,8 @@ def train_neural_network_model(
 
 if __name__ == "__main__":
     # Test Neural Network model
-    from backend.app.models.data_loader import load_doe_data
-    from backend.app.models.feature_engineering import engineer_features
+    from app.models.data_loader import load_doe_data
+    from app.models.feature_engineering import engineer_features
 
     print("Loading DOE data...")
     loader, _, _, _, _, _, _ = load_doe_data()

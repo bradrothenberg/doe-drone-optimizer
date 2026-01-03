@@ -101,10 +101,19 @@ def main():
     # ========================================
     logger.info("\n[4/6] Training Neural Network...")
 
-    # Scale data for neural network
-    X_train_scaled, y_train_scaled = loader.transform(X_train_eng, loader.y_train)
-    X_val_scaled, y_val_scaled = loader.transform(X_val_eng, loader.y_val)
-    X_test_scaled, y_test_scaled = loader.transform(X_test_eng, loader.y_test)
+    # Scale engineered features for neural network (need new scalers for 17 features)
+    from sklearn.preprocessing import RobustScaler
+    scaler_X_eng = RobustScaler()
+    scaler_y = RobustScaler()
+
+    X_train_scaled = scaler_X_eng.fit_transform(X_train_eng)
+    y_train_scaled = scaler_y.fit_transform(loader.y_train)
+
+    X_val_scaled = scaler_X_eng.transform(X_val_eng)
+    y_val_scaled = scaler_y.transform(loader.y_val)
+
+    X_test_scaled = scaler_X_eng.transform(X_test_eng)
+    y_test_scaled = scaler_y.transform(loader.y_test)
 
     nn_model, nn_val_metrics = train_neural_network_model(
         X_train_scaled, y_train_scaled,
@@ -175,8 +184,12 @@ def main():
     joblib.dump(engineer, engineer_path)
     logger.info(f"Saved feature engineer to {engineer_path}")
 
-    # Save scalers
-    loader.save_scalers(models_dir)
+    # Save scalers (for engineered features)
+    scaler_X_eng_path = models_dir / "scaler_X_engineered.pkl"
+    scaler_y_path = models_dir / "scaler_y.pkl"
+    joblib.dump(scaler_X_eng, scaler_X_eng_path)
+    joblib.dump(scaler_y, scaler_y_path)
+    logger.info(f"Saved scalers to {models_dir}")
 
     # Save ensemble metadata
     ensemble.save(models_dir)
