@@ -12,6 +12,7 @@ from pathlib import Path
 
 from app.api import predict, optimize, health
 from app.core.model_manager import ModelManager
+from app.core.config import settings
 
 # Configure logging
 logging.basicConfig(
@@ -57,19 +58,20 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="DOE Drone Design Optimizer API",
+    title=settings.app_name,
     description="Multi-objective optimization API for drone design using NSGA-II",
-    version="1.0.0",
+    version=settings.app_version,
+    debug=settings.debug,
     lifespan=lifespan
 )
 
-# Configure CORS
+# Configure CORS with environment-based origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=settings.cors_allow_methods,
+    allow_headers=settings.cors_allow_headers,
 )
 
 # Include routers
@@ -82,10 +84,10 @@ app.include_router(optimize.router, prefix="/api", tags=["optimization"])
 async def root():
     """Root endpoint"""
     return {
-        "message": "DOE Drone Design Optimizer API",
-        "version": "1.0.0",
+        "message": settings.app_name,
+        "version": settings.app_version,
         "docs": "/docs",
-        "health": "/api/health"
+        "health": "/health"
     }
 
 
@@ -93,12 +95,15 @@ async def root():
 async def global_exception_handler(request, exc):
     """Global exception handler"""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
+
+    # Only show details in debug mode to prevent information leakage
+    content = {"error": "Internal server error"}
+    if settings.show_error_details:
+        content["detail"] = str(exc)
+
     return JSONResponse(
         status_code=500,
-        content={
-            "error": "Internal server error",
-            "detail": str(exc)
-        }
+        content=content
     )
 
 

@@ -2,9 +2,8 @@
 Pydantic schemas for optimization endpoint
 """
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from typing import List, Dict, Optional, Any
-from app.schemas.predict import DesignParameters, PredictionResult
 
 
 class Constraints(BaseModel):
@@ -13,13 +12,6 @@ class Constraints(BaseModel):
     max_cost_usd: Optional[float] = Field(None, ge=0, le=200000, description="Maximum cost ($)")
     max_mtow_lbm: Optional[float] = Field(None, ge=0, le=20000, description="Maximum MTOW (lbm)")
     min_endurance_hr: Optional[float] = Field(None, ge=0, le=100, description="Minimum endurance (hr)")
-
-    @field_validator('*')
-    @classmethod
-    def check_positive(cls, v):
-        if v is not None and v < 0:
-            raise ValueError("All constraints must be non-negative")
-        return v
 
     def to_dict(self) -> Dict[str, float]:
         """Convert to dictionary, excluding None values"""
@@ -87,7 +79,7 @@ class OptimizeResponse(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "designs": [
+                "pareto_designs": [
                     {
                         "design_parameters": {
                             "loa": 150,

@@ -3,7 +3,7 @@ Pydantic schemas for prediction endpoint
 """
 
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 
 class DesignParameters(BaseModel):
@@ -63,7 +63,7 @@ class PredictResponse(BaseModel):
     predictions: List[PredictionResult] = Field(..., description="Predictions for each design")
     n_designs: int = Field(..., description="Number of designs predicted")
     inference_time_ms: float = Field(..., description="Total inference time (milliseconds)")
-    model_info: Optional[Dict[str, float]] = Field(None, description="Model ensemble weights (optional)")
+    model_info: Optional[Dict[str, Any]] = Field(None, description="Model ensemble weights (optional)")
 
     class Config:
         json_schema_extra = {

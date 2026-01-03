@@ -90,13 +90,14 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
 
             if constraints_dict:
                 # Try balanced relaxation
-                handler = ConstraintHandler()
-                relaxed_constraints = handler.relax_constraints(
-                    constraints_dict,
-                    strategy='balanced'
+                handler = ConstraintHandler(constraints_dict)
+                relaxation_result = handler.relax_constraints(
+                    relaxation_strategy='balanced'
                 )
 
+                relaxed_constraints = relaxation_result['relaxed_constraints']
                 logger.info(f"Relaxed constraints: {relaxed_constraints}")
+                logger.info(f"Relaxation: {relaxation_result['relaxation_description']}")
 
                 try:
                     results = run_nsga2_optimization(
@@ -111,7 +112,8 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                     constraint_relaxation_applied = {
                         'original': constraints_dict,
                         'relaxed': relaxed_constraints,
-                        'strategy': 'balanced'
+                        'strategy': relaxation_result['strategy'],
+                        'description': relaxation_result['relaxation_description']
                     }
                     feasible = False
 
