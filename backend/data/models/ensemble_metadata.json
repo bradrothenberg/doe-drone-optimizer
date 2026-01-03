@@ -1,0 +1,13 @@
+{
+  "model_type": "Ensemble (XGBoost + Neural Network)",
+  "xgb_weight": 1.0,
+  "nn_weight": 0.0,
+  "n_outputs": 4,
+  "output_names": [
+    "Range",
+    "Endurance",
+    "MTOW",
+    "Cost"
+  ],
+  "is_fitted": true
+}
