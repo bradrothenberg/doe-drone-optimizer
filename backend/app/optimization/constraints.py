@@ -19,7 +19,8 @@ class ConstraintHandler:
     def __init__(
         self,
         constraints: Optional[Dict[str, float]] = None,
-        tolerance: float = 0.01
+        tolerance: float = 0.01,
+        validate: bool = False
     ):
         """
         Initialize constraint handler
@@ -31,10 +32,20 @@ class ConstraintHandler:
                 - max_mtow_lbm: Maximum MTOW (lbm)
                 - min_endurance_hr: Minimum endurance (hr)
             tolerance: Relative tolerance for constraint satisfaction (e.g., 0.01 = 1%)
+            validate: If True, validate constraints on initialization (raises ValueError if invalid)
         """
         self.constraints = constraints or {}
         self.tolerance = tolerance
         self.original_constraints = constraints.copy() if constraints else {}
+        
+        # Optional validation on initialization
+        if validate and self.constraints:
+            is_valid, errors, warnings = validate_constraints(self.constraints)
+            if not is_valid:
+                raise ValueError(f"Invalid constraints: {'; '.join(errors)}")
+            if warnings:
+                for warning in warnings:
+                    logger.warning(f"Constraint warning: {warning}")
 
     def check_feasibility(
         self,
@@ -283,30 +294,18 @@ class ConstraintHandler:
 
         for constraint_name, violation_array in violations.items():
             # Normalize violation by constraint value
-            if 'min' in constraint_name:
-                target = self.constraints[constraint_name]
-                # Guard against division by zero
-                if target <= 0:
-                    logger.warning(
-                        f"Constraint {constraint_name} has non-positive value ({target}). "
-                        "Skipping normalization to avoid division by zero."
-                    )
-                    # Use raw violation value without normalization
-                    violation_scores += violation_array
-                else:
-                    violation_scores += violation_array / target
-            elif 'max' in constraint_name:
-                target = self.constraints[constraint_name]
-                # Guard against division by zero
-                if target <= 0:
-                    logger.warning(
-                        f"Constraint {constraint_name} has non-positive value ({target}). "
-                        "Skipping normalization to avoid division by zero."
-                    )
-                    # Use raw violation value without normalization
-                    violation_scores += violation_array
-                else:
-                    violation_scores += violation_array / target
+            target = self.constraints[constraint_name]
+            
+            # Guard against division by zero
+            if target <= 0:
+                logger.warning(
+                    f"Constraint {constraint_name} has non-positive value ({target}). "
+                    "Skipping normalization to avoid division by zero."
+                )
+                # Use raw violation value without normalization
+                violation_scores += violation_array
+            else:
+                violation_scores += violation_array / target
 
         # Select designs with smallest violations
         nearest_indices = np.argsort(violation_scores)[:n_nearest]
