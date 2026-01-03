@@ -262,10 +262,79 @@ def test_constraint_relaxation():
     return relaxation_result
 
 
+def test_infeasible_constraints():
+    """Test handling of impossible constraints"""
+    print("\n" + "="*80)
+    print("TEST 5: Infeasible Constraints Handling")
+    print("="*80)
+
+    # Load models
+    models_dir = Path(__file__).parent.parent / "data" / "models"
+
+    ensemble = EnsembleDroneModel()
+    ensemble.load_models(
+        xgb_model_path=models_dir / "xgboost_v1.pkl",
+        nn_model_path=models_dir / "neural_v1.pt",
+        input_dim=17
+    )
+
+    engineer = joblib.load(models_dir / "feature_engineer.pkl")
+
+    # Create impossible constraints
+    impossible_constraints = {
+        'min_range_nm': 10000,  # Impossible: dataset max is ~6000
+        'max_cost_usd': 100,    # Impossible: too low
+        'max_mtow_lbm': 50,     # Impossible: too low
+        'min_endurance_hr': 100  # Impossible: dataset max is ~40
+    }
+
+    print(f"\nTesting with impossible constraints:")
+    print(f"  {impossible_constraints}")
+
+    # Try optimization with constraint relaxation
+    handler = ConstraintHandler(impossible_constraints)
+
+    print("\nApplying balanced constraint relaxation...")
+    relaxation_result = handler.relax_constraints('balanced')
+
+    print(f"\nRelaxed constraints:")
+    for desc in relaxation_result['relaxation_description']:
+        print(f"  - {desc}")
+
+    # Even relaxed constraints should still be very challenging
+    # This tests that the system gracefully handles near-impossible scenarios
+    print("\nAttempting optimization with relaxed constraints...")
+
+    try:
+        results = optimize_with_constraints(
+            ensemble_model=ensemble,
+            feature_engineer=engineer,
+            constraints=relaxation_result['relaxed_constraints'],
+            population_size=100,  # Smaller for faster test
+            n_generations=50
+        )
+
+        print(f"\nResults:")
+        print(f"  Feasible designs: {results['n_feasible']}/{results['n_pareto']}")
+
+        # With extremely relaxed constraints, we should get at least some designs
+        # (even if feasibility rate is low)
+        assert results['n_pareto'] > 0, "No Pareto designs found"
+
+        print("\nPASSED: System handles extreme constraints gracefully")
+
+    except ValueError as e:
+        # It's acceptable to fail with a clear error message for truly impossible constraints
+        print(f"\nOptimization failed as expected: {e}")
+        print("PASSED: System fails gracefully with clear error message")
+
+    return True
+
+
 def test_performance_targets():
     """Test performance targets (< 12s total time)"""
     print("\n" + "="*80)
-    print("TEST 5: Performance Targets")
+    print("TEST 6: Performance Targets")
     print("="*80)
 
     # Load models
@@ -327,6 +396,7 @@ def main():
         test_constrained_optimization()
         test_pareto_extraction()
         test_constraint_relaxation()
+        test_infeasible_constraints()
         test_performance_targets()
 
         total_time = time.time() - start_time

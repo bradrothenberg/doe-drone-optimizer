@@ -181,6 +181,16 @@ def run_nsga2_optimization(
     )
 
     logger.info(f"Optimization complete after {res.algorithm.n_gen} generations")
+
+    # Check if optimization found valid solutions
+    if res.X is None or len(res.X) == 0:
+        logger.error("Optimization failed to find valid solutions")
+        logger.error("This typically indicates overly restrictive constraints or numerical issues")
+        raise ValueError(
+            "NSGA-II optimization failed to find valid solutions. "
+            "Please check constraints and try relaxing them or adjusting population/generations."
+        )
+
     logger.info(f"Pareto front size: {len(res.X)}")
 
     # Extract results
