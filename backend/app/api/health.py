@@ -3,7 +3,7 @@ Health check endpoint
 """
 
 from fastapi import APIRouter, Request
-from datetime import datetime
+from datetime import datetime, UTC
 
 from app.schemas.health import HealthResponse
 
@@ -27,7 +27,7 @@ async def health_check(request: Request):
 
     return HealthResponse(
         status="healthy" if model_manager.is_loaded else "unhealthy",
-        timestamp=datetime.utcnow().isoformat() + "Z",
+        timestamp=datetime.now(UTC).isoformat(),
         models_loaded=model_manager.is_loaded,
         model_info=model_info,
         version="1.0.0"

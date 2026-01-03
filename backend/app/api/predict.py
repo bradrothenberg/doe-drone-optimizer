@@ -64,21 +64,21 @@ async def predict_performance(request_data: PredictRequest, request: Request):
         # Build results
         results = []
         for i in range(len(predictions)):
-            result = PredictionResult(
-                range_nm=float(predictions[i, 0]),
-                endurance_hr=float(predictions[i, 1]),
-                mtow_lbm=float(predictions[i, 2]),
-                cost_usd=float(predictions[i, 3])
-            )
+            result_dict = {
+                'range_nm': float(predictions[i, 0]),
+                'endurance_hr': float(predictions[i, 1]),
+                'mtow_lbm': float(predictions[i, 2]),
+                'cost_usd': float(predictions[i, 3])
+            }
 
             # Add uncertainty if requested
             if request_data.return_uncertainty:
-                result.uncertainty_range_nm = float(uncertainty[i, 0])
-                result.uncertainty_endurance_hr = float(uncertainty[i, 1])
-                result.uncertainty_mtow_lbm = float(uncertainty[i, 2])
-                result.uncertainty_cost_usd = float(uncertainty[i, 3])
+                result_dict['range_nm_uncertainty'] = float(uncertainty[i, 0])
+                result_dict['endurance_hr_uncertainty'] = float(uncertainty[i, 1])
+                result_dict['mtow_lbm_uncertainty'] = float(uncertainty[i, 2])
+                result_dict['cost_usd_uncertainty'] = float(uncertainty[i, 3])
 
-            results.append(result)
+            results.append(PredictionResult(**result_dict))
 
         inference_time_ms = (time.time() - start_time) * 1000
 

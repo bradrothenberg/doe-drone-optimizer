@@ -63,7 +63,7 @@ class PredictResponse(BaseModel):
     predictions: List[PredictionResult] = Field(..., description="Predictions for each design")
     n_designs: int = Field(..., description="Number of designs predicted")
     inference_time_ms: float = Field(..., description="Total inference time (milliseconds)")
-    model_info: Dict[str, float] = Field(..., description="Model ensemble weights")
+    model_info: Optional[Dict[str, float]] = Field(None, description="Model ensemble weights (optional)")
 
     class Config:
         json_schema_extra = {
