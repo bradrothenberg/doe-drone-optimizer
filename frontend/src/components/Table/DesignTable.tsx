@@ -45,36 +45,7 @@ export default function DesignTable({ designs }: DesignTableProps) {
     page * rowsPerPage + rowsPerPage
   )
 
-  const handleExportAll = () => {
-    const csv = [
-      ['LOA', 'Span', 'LE_Sweep_P1', 'LE_Sweep_P2', 'TE_Sweep_P1', 'TE_Sweep_P2', 'Panel_Break', 'Range', 'Endurance', 'MTOW', 'Cost'].join(','),
-      ...designs.map(d =>
-        [
-          d.loa,
-          d.span,
-          d.le_sweep_p1,
-          d.le_sweep_p2,
-          d.te_sweep_p1,
-          d.te_sweep_p2,
-          d.panel_break,
-          d.range_nm,
-          d.endurance_hr,
-          d.mtow_lbm,
-          d.cost_usd
-        ].join(',')
-      )
-    ].join('\n')
-
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'pareto_designs_all.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const handleExportInputs = () => {
+  const handleExportCSV = () => {
     const csv = [
       ['LOA In', 'Span', 'LE Sweep P1', 'LE Sweep P2', 'TE Sweep P1', 'TE Sweep P2', 'Panel Break %'].join(','),
       ...designs.map(d =>
@@ -123,39 +94,22 @@ export default function DesignTable({ designs }: DesignTableProps) {
           Pareto-Optimal Designs ({designs.length} total)
         </Typography>
 
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            variant="outlined"
-            onClick={handleExportInputs}
-            sx={{
-              borderColor: '#d32f2f',
-              color: '#d32f2f',
-              fontFamily: 'monospace',
-              fontWeight: 'bold',
-              '&:hover': {
-                borderColor: '#b71c1c',
-                bgcolor: '#ffebee'
-              }
-            }}
-          >
-            Export nTop Inputs
-          </Button>
-          <Button
-            variant="outlined"
-            onClick={handleExportAll}
-            sx={{
+        <Button
+          variant="outlined"
+          onClick={handleExportCSV}
+          sx={{
+            borderColor: '#000000',
+            color: '#000000',
+            fontFamily: 'monospace',
+            ml: 2,
+            '&:hover': {
               borderColor: '#000000',
-              color: '#000000',
-              fontFamily: 'monospace',
-              '&:hover': {
-                borderColor: '#000000',
-                bgcolor: '#e0e0e0'
-              }
-            }}
-          >
-            Export All Data
-          </Button>
-        </Box>
+              bgcolor: '#e0e0e0'
+            }
+          }}
+        >
+          Export CSV
+        </Button>
       </Box>
 
       <TableContainer>
