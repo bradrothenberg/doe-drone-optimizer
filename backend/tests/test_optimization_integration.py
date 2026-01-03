@@ -107,11 +107,16 @@ def test_constrained_optimization():
     }
 
     # Validate constraints
-    is_valid, errors = validate_constraints(constraints)
+    is_valid, errors, warnings = validate_constraints(constraints)
     print(f"\nConstraint validation: {'PASSED' if is_valid else 'FAILED'}")
     if errors:
+        print("  Errors:")
         for error in errors:
-            print(f"  - {error}")
+            print(f"    - {error}")
+    if warnings:
+        print("  Warnings:")
+        for warning in warnings:
+            print(f"    - {warning}")
 
     assert is_valid, "Constraints validation failed"
 

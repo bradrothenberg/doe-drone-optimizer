@@ -185,17 +185,18 @@ def run_nsga2_optimization(
 
     # Extract results
     pareto_designs = res.X  # Design parameters (n_pareto, 7)
-    pareto_objectives = res.F  # Objectives (n_pareto, 4)
+    pareto_objectives = res.F  # Objectives (n_pareto, 4) - includes penalties
 
-    # Transform objectives back to original scale (undo minimization negation)
-    range_nm = -pareto_objectives[:, 0]
-    endurance_hr = -pareto_objectives[:, 1]
-    mtow_lbm = pareto_objectives[:, 2]
-    cost_usd = pareto_objectives[:, 3]
-
-    # Get predictions with uncertainty
+    # Get clean predictions with uncertainty (without penalties)
+    # This is critical: pareto_objectives contains penalty terms which corrupt the values
     X_eng = feature_engineer.transform(pareto_designs)
     predictions, uncertainty = ensemble_model.predict(X_eng, return_uncertainty=True)
+
+    # Use clean predictions instead of penalty-corrupted objectives
+    range_nm = predictions[:, 0]
+    endurance_hr = predictions[:, 1]
+    mtow_lbm = predictions[:, 2]
+    cost_usd = predictions[:, 3]
 
     # Package results
     results = {

@@ -311,7 +311,7 @@ class ConstraintHandler:
         self.constraints = self.original_constraints.copy()
 
 
-def validate_constraints(constraints: Dict[str, float]) -> Tuple[bool, List[str]]:
+def validate_constraints(constraints: Dict[str, float]) -> Tuple[bool, List[str], List[str]]:
     """
     Validate user-provided constraints
 
@@ -321,8 +321,10 @@ def validate_constraints(constraints: Dict[str, float]) -> Tuple[bool, List[str]
     Returns:
         is_valid: True if all constraints are valid
         errors: List of error messages
+        warnings: List of warning messages (don't affect validity)
     """
     errors = []
+    warnings = []
 
     # Check constraint names
     valid_names = {'min_range_nm', 'max_cost_usd', 'max_mtow_lbm', 'min_endurance_hr'}
@@ -355,12 +357,12 @@ def validate_constraints(constraints: Dict[str, float]) -> Tuple[bool, List[str]
         if constraints['min_endurance_hr'] > 40:
             errors.append("min_endurance_hr exceeds typical dataset range (0-40 hr)")
 
-    # Check for conflicting constraints
+    # Check for conflicting constraints (warnings only, don't fail validation)
     if 'min_range_nm' in constraints and 'max_cost_usd' in constraints:
         if constraints['min_range_nm'] > 3000 and constraints['max_cost_usd'] < 20000:
-            errors.append("Warning: High range requirement with low cost limit may be infeasible")
+            warnings.append("High range requirement with low cost limit may be infeasible")
 
-    return len(errors) == 0, errors
+    return len(errors) == 0, errors, warnings
 
 
 if __name__ == "__main__":
@@ -389,11 +391,16 @@ if __name__ == "__main__":
     }
 
     # Validate constraints
-    is_valid, errors = validate_constraints(constraints_test)
+    is_valid, errors, warnings = validate_constraints(constraints_test)
     print(f"\nConstraint validation: {'PASSED' if is_valid else 'FAILED'}")
     if errors:
+        print("  Errors:")
         for error in errors:
-            print(f"  - {error}")
+            print(f"    - {error}")
+    if warnings:
+        print("  Warnings:")
+        for warning in warnings:
+            print(f"    - {warning}")
 
     # Create handler
     handler = ConstraintHandler(constraints_test, tolerance=0.01)
