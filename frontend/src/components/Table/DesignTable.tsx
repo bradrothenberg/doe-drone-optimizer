@@ -12,6 +12,7 @@ import {
   TableSortLabel,
   Button
 } from '@mui/material'
+import Planform from '../Visualization/Planform'
 import type { DesignResult } from '../../types'
 
 interface DesignTableProps {
@@ -44,7 +45,7 @@ export default function DesignTable({ designs }: DesignTableProps) {
     page * rowsPerPage + rowsPerPage
   )
 
-  const handleExport = () => {
+  const handleExportAll = () => {
     const csv = [
       ['LOA', 'Span', 'LE_Sweep_P1', 'LE_Sweep_P2', 'TE_Sweep_P1', 'TE_Sweep_P2', 'Panel_Break', 'Range', 'Endurance', 'MTOW', 'Cost'].join(','),
       ...designs.map(d =>
@@ -68,7 +69,32 @@ export default function DesignTable({ designs }: DesignTableProps) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'pareto_designs.csv'
+    a.download = 'pareto_designs_all.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleExportInputs = () => {
+    const csv = [
+      ['LOA In', 'Span', 'LE Sweep P1', 'LE Sweep P2', 'TE Sweep P1', 'TE Sweep P2', 'Panel Break %'].join(','),
+      ...designs.map(d =>
+        [
+          d.loa,
+          d.span,
+          d.le_sweep_p1,
+          d.le_sweep_p2,
+          d.te_sweep_p1,
+          d.te_sweep_p2,
+          (d.panel_break * 100).toFixed(2) // Convert to percentage
+        ].join(',')
+      )
+    ].join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'ntop_input_parameters.csv'
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -97,28 +123,48 @@ export default function DesignTable({ designs }: DesignTableProps) {
           Pareto-Optimal Designs ({designs.length} total)
         </Typography>
 
-        <Button
-          variant="outlined"
-          onClick={handleExport}
-          sx={{
-            borderColor: '#000000',
-            color: '#000000',
-            fontFamily: 'monospace',
-            ml: 2,
-            '&:hover': {
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            onClick={handleExportInputs}
+            sx={{
+              borderColor: '#d32f2f',
+              color: '#d32f2f',
+              fontFamily: 'monospace',
+              fontWeight: 'bold',
+              '&:hover': {
+                borderColor: '#b71c1c',
+                bgcolor: '#ffebee'
+              }
+            }}
+          >
+            Export nTop Inputs
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={handleExportAll}
+            sx={{
               borderColor: '#000000',
-              bgcolor: '#e0e0e0'
-            }
-          }}
-        >
-          Export CSV
-        </Button>
+              color: '#000000',
+              fontFamily: 'monospace',
+              '&:hover': {
+                borderColor: '#000000',
+                bgcolor: '#e0e0e0'
+              }
+            }}
+          >
+            Export All Data
+          </Button>
+        </Box>
       </Box>
 
       <TableContainer>
         <Table size="small" sx={{ '& *': { fontFamily: 'monospace !important' } }}>
           <TableHead>
             <TableRow sx={{ bgcolor: '#e0e0e0' }}>
+              <TableCell sx={{ fontWeight: 'bold', borderBottom: '2px solid #000000' }}>
+                Planform
+              </TableCell>
               {[
                 { key: 'loa', label: 'LOA (in)' },
                 { key: 'span', label: 'Span (in)' },
@@ -149,6 +195,9 @@ export default function DesignTable({ designs }: DesignTableProps) {
                   '&:hover': { bgcolor: '#e0e0e0' }
                 }}
               >
+                <TableCell sx={{ p: 0.5 }}>
+                  <Planform design={design} width={140} height={100} />
+                </TableCell>
                 <TableCell>{design.loa.toFixed(1)}</TableCell>
                 <TableCell>{design.span.toFixed(1)}</TableCell>
                 <TableCell>{design.range_nm.toFixed(0)}</TableCell>
