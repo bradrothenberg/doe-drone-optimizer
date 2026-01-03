@@ -285,10 +285,28 @@ class ConstraintHandler:
             # Normalize violation by constraint value
             if 'min' in constraint_name:
                 target = self.constraints[constraint_name]
-                violation_scores += violation_array / target
+                # Guard against division by zero
+                if target <= 0:
+                    logger.warning(
+                        f"Constraint {constraint_name} has non-positive value ({target}). "
+                        "Skipping normalization to avoid division by zero."
+                    )
+                    # Use raw violation value without normalization
+                    violation_scores += violation_array
+                else:
+                    violation_scores += violation_array / target
             elif 'max' in constraint_name:
                 target = self.constraints[constraint_name]
-                violation_scores += violation_array / target
+                # Guard against division by zero
+                if target <= 0:
+                    logger.warning(
+                        f"Constraint {constraint_name} has non-positive value ({target}). "
+                        "Skipping normalization to avoid division by zero."
+                    )
+                    # Use raw violation value without normalization
+                    violation_scores += violation_array
+                else:
+                    violation_scores += violation_array / target
 
         # Select designs with smallest violations
         nearest_indices = np.argsort(violation_scores)[:n_nearest]
