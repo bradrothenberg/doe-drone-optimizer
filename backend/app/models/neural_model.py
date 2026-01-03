@@ -378,7 +378,14 @@ class NeuralNetworkDroneModel:
         if not input_path.exists():
             raise FileNotFoundError(f"Model file not found: {input_path}")
 
-        checkpoint = torch.load(input_path, map_location=self.device)
+        # Try safe loading first (weights_only=True for security)
+        # Fall back to weights_only=False only if absolutely necessary
+        try:
+            checkpoint = torch.load(input_path, map_location=self.device, weights_only=True)
+        except Exception as e:
+            logger.warning(f"Safe loading failed, falling back to weights_only=False: {e}")
+            logger.warning("This should only happen with models saved by older PyTorch versions")
+            checkpoint = torch.load(input_path, map_location=self.device, weights_only=False)
 
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
