@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { Box, Button, Slider, Typography } from '@mui/material'
 import type { Constraints } from '../../types'
 
@@ -6,6 +6,7 @@ interface ConstraintFormProps {
   constraints: Constraints
   onUpdate: (constraints: Constraints) => void
   isOptimizing: boolean
+  hasResults: boolean
 }
 
 const constraintConfig = [
@@ -75,35 +76,28 @@ const presets = {
   }
 }
 
-const DEBOUNCE_MS = 300
+// Check if two constraint objects are equal
+function constraintsEqual(a: Constraints, b: Constraints): boolean {
+  return (
+    a.min_range_nm === b.min_range_nm &&
+    a.max_cost_usd === b.max_cost_usd &&
+    a.max_mtow_lbm === b.max_mtow_lbm &&
+    a.min_endurance_hr === b.min_endurance_hr &&
+    a.max_wingtip_deflection_in === b.max_wingtip_deflection_in
+  )
+}
 
-export default function ConstraintForm({ constraints, onUpdate, isOptimizing }: ConstraintFormProps) {
+export default function ConstraintForm({ constraints, onUpdate, isOptimizing, hasResults }: ConstraintFormProps) {
   // Local state for immediate slider feedback
   const [localConstraints, setLocalConstraints] = useState<Constraints>(constraints)
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Track if constraints have changed since last optimization
+  const [hasChanges, setHasChanges] = useState(false)
 
   // Sync local state when external constraints change (e.g., preset selection)
   useEffect(() => {
     setLocalConstraints(constraints)
+    setHasChanges(false)
   }, [constraints])
-
-  // Cleanup debounce timer on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current)
-      }
-    }
-  }, [])
-
-  const debouncedUpdate = useCallback((newConstraints: Constraints) => {
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current)
-    }
-    debounceTimerRef.current = setTimeout(() => {
-      onUpdate(newConstraints)
-    }, DEBOUNCE_MS)
-  }, [onUpdate])
 
   const handleSliderChange = (key: keyof Constraints) => (
     _event: Event,
@@ -114,22 +108,64 @@ export default function ConstraintForm({ constraints, onUpdate, isOptimizing }: 
       [key]: value as number
     }
     setLocalConstraints(newConstraints)
-    debouncedUpdate(newConstraints)
+    // Mark as changed if different from submitted constraints
+    setHasChanges(!constraintsEqual(newConstraints, constraints))
   }
 
   const handlePreset = (presetName: keyof typeof presets) => {
-    onUpdate(presets[presetName])
+    const presetConstraints = presets[presetName]
+    setLocalConstraints(presetConstraints)
+    setHasChanges(!constraintsEqual(presetConstraints, constraints))
   }
 
   const handleClear = () => {
-    onUpdate({
+    const cleared: Constraints = {
       min_range_nm: undefined,
       max_cost_usd: undefined,
       max_mtow_lbm: undefined,
       min_endurance_hr: undefined,
       max_wingtip_deflection_in: undefined
-    })
+    }
+    setLocalConstraints(cleared)
+    setHasChanges(!constraintsEqual(cleared, constraints))
   }
+
+  const handleRunOptimization = () => {
+    onUpdate(localConstraints)
+    setHasChanges(false)
+  }
+
+  // Determine button text and style based on state
+  const getButtonConfig = () => {
+    if (isOptimizing) {
+      return {
+        text: 'OPTIMIZING...',
+        bgcolor: '#cccccc',
+        disabled: true
+      }
+    }
+    if (hasChanges) {
+      return {
+        text: 'RUN OPTIMIZATION',
+        bgcolor: '#1565c0',
+        disabled: false
+      }
+    }
+    if (hasResults) {
+      return {
+        text: 'OPTIMIZATION COMPLETE',
+        bgcolor: '#2e7d32',
+        disabled: true
+      }
+    }
+    return {
+      text: 'RUN OPTIMIZATION',
+      bgcolor: '#000000',
+      disabled: false
+    }
+  }
+
+  const buttonConfig = getButtonConfig()
 
   return (
     <Box
@@ -255,27 +291,41 @@ export default function ConstraintForm({ constraints, onUpdate, isOptimizing }: 
       <Button
         variant="contained"
         fullWidth
-        disabled={isOptimizing}
-        onClick={() => onUpdate(localConstraints)}
+        disabled={buttonConfig.disabled}
+        onClick={handleRunOptimization}
         sx={{
           mt: 4,
-          bgcolor: '#000000',
+          bgcolor: buttonConfig.bgcolor,
           color: '#ffffff',
           fontFamily: 'monospace',
           fontWeight: 'bold',
           fontSize: '1.1em',
           py: 1.5,
           '&:hover': {
-            bgcolor: '#333333'
+            bgcolor: hasChanges ? '#0d47a1' : '#333333'
           },
           '&:disabled': {
-            bgcolor: '#cccccc',
-            color: '#666666'
+            bgcolor: buttonConfig.bgcolor,
+            color: '#ffffff'
           }
         }}
       >
-        {isOptimizing ? 'OPTIMIZING...' : 'RUN OPTIMIZATION'}
+        {buttonConfig.text}
       </Button>
+
+      {hasChanges && hasResults && (
+        <Typography
+          sx={{
+            fontFamily: 'monospace',
+            fontSize: '0.85em',
+            color: '#1565c0',
+            mt: 1,
+            textAlign: 'center'
+          }}
+        >
+          Constraints changed - click to re-run optimization
+        </Typography>
+      )}
     </Box>
   )
 }

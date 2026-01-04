@@ -1,13 +1,45 @@
+import { useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { Box, Typography } from '@mui/material'
-import { chartLayout, chartConfig } from './chartConfig'
+import { chartLayout, chart3DConfig } from './chartConfig'
 import type { DesignResult } from '../../types'
 
 interface ParetoChart3DProps {
   data: DesignResult[]
+  selectedIndex?: number | null
+  onSelectDesign?: (index: number) => void
 }
 
-export default function ParetoChart3D({ data }: ParetoChart3DProps) {
+export default function ParetoChart3D({ data, selectedIndex, onSelectDesign }: ParetoChart3DProps) {
+  // Track the currently hovered point index
+  const hoveredIndexRef = useRef<number | null>(null)
+
+  // Create marker colors and sizes - highlight selected point
+  const markerColors = data.map((d, i) =>
+    i === selectedIndex ? '#ff5722' : d.cost_usd
+  )
+  const markerSizes = data.map((_, i) =>
+    i === selectedIndex ? 12 : 5
+  )
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleHover = (event: any) => {
+    if (event.points && event.points.length > 0) {
+      hoveredIndexRef.current = event.points[0].pointNumber
+    }
+  }
+
+  const handleUnhover = () => {
+    hoveredIndexRef.current = null
+  }
+
+  // Handle click on the plot container - select the hovered point
+  const handleContainerClick = () => {
+    if (hoveredIndexRef.current !== null && onSelectDesign) {
+      onSelectDesign(hoveredIndexRef.current)
+    }
+  }
+
   return (
     <Box
       sx={{
@@ -30,6 +62,16 @@ export default function ParetoChart3D({ data }: ParetoChart3DProps) {
       >
         Pareto 3D: Range × Endurance × MTOW ({data.length} optimal)
       </Typography>
+      <Typography
+        sx={{
+          fontFamily: 'monospace',
+          fontSize: '0.8em',
+          color: '#666666',
+          mb: 1
+        }}
+      >
+        Click any data point to view planform
+      </Typography>
 
       <Plot
         data={[
@@ -41,8 +83,8 @@ export default function ParetoChart3D({ data }: ParetoChart3DProps) {
             type: 'scatter3d',
             name: 'Pareto Optimal',
             marker: {
-              size: 5,
-              color: data.map(d => d.cost_usd),
+              size: markerSizes,
+              color: markerColors,
               colorscale: [[0, '#e3f2fd'], [1, '#1565c0']],
               colorbar: {
                 title: 'Cost ($)',
@@ -89,10 +131,14 @@ export default function ParetoChart3D({ data }: ParetoChart3DProps) {
             bgcolor: '#ffffff'
           },
           margin: { t: 40, r: 10, b: 10, l: 10 },
-          showlegend: false
+          showlegend: false,
+          hovermode: 'closest'
         }}
-        config={chartConfig}
-        style={{ width: '100%', height: '600px' }}
+        config={chart3DConfig}
+        style={{ width: '100%', height: '600px', cursor: 'pointer' }}
+        onHover={handleHover}
+        onUnhover={handleUnhover}
+        onClick={handleContainerClick}
       />
     </Box>
   )

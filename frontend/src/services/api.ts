@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { OptimizeRequest, OptimizeResponse, PredictRequest, PredictResponse } from '../types'
+import type { OptimizeRequest, OptimizeResponse, PredictRequest, PredictResponse, SensitivityRequest, SensitivityResponse } from '../types'
 
 const api = axios.create({
   baseURL: '/api',
@@ -20,5 +20,10 @@ export const predictDesigns = async (request: PredictRequest): Promise<PredictRe
 
 export const checkHealth = async () => {
   const response = await api.get('/health')
+  return response.data
+}
+
+export const computeSensitivity = async (request: SensitivityRequest): Promise<SensitivityResponse> => {
+  const response = await api.post<SensitivityResponse>('/sensitivity', request)
   return response.data
 }

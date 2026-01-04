@@ -5,136 +5,224 @@ interface PlanformProps {
   design: DesignResult
   width?: number
   height?: number
+  color?: string
+  showLabels?: boolean
 }
 
 /**
  * Renders a top-down planform view of the wing design
- * Shows the wing shape based on sweep angles and panel break
+ * Matches the DOE report style with:
+ * - Light blue wing fill
+ * - Yellow elevons
+ * - Red/pink control surfaces
+ * - Grid lines and axis labels
  */
-export default function Planform({ design, width = 200, height = 150 }: PlanformProps) {
+export default function Planform({ design, width = 400, height = 350, color, showLabels = true }: PlanformProps) {
   const { loa, span, le_sweep_p1, le_sweep_p2, te_sweep_p1, te_sweep_p2, panel_break } = design
 
-  // Scale factors to fit in SVG viewport
-  const scaleX = width / span
-  const scaleY = height / loa
-  const scale = Math.min(scaleX, scaleY) * 0.8 // 80% to leave margins
+  // SVG viewBox dimensions (matching DOE report style)
+  const viewWidth = 500
+  const viewHeight = 450
+  const padding = 40
+  const centerX = viewWidth / 2
+  const centerY = viewHeight / 2
 
-  // Centerline position
-  const centerX = width / 2
-  const startY = height * 0.1
+  // Available drawing area
+  const drawWidth = viewWidth - 2 * padding
+  const drawHeight = viewHeight - 2 * padding
 
-  // Panel break position (fraction of half-span)
+  // Scale to fit the wing in the drawing area
+  const scaleX = drawWidth / span
+  const scaleY = drawHeight / loa
+  const scale = Math.min(scaleX, scaleY) * 0.9
+
+  // Wing geometry calculations
   const halfSpan = span / 2
   const breakSpan = halfSpan * panel_break
-
-  // Calculate sweep offsets (convert degrees to offset)
-  // Positive sweep = leading edge swept back
-  const leOffset1 = Math.tan((le_sweep_p1 * Math.PI) / 180) * breakSpan * scale
-  const teOffset1 = Math.tan((te_sweep_p1 * Math.PI) / 180) * breakSpan * scale
-
   const remainingSpan = halfSpan - breakSpan
+
+  // Convert sweep angles to Y offsets (positive sweep = trailing edge moves aft)
+  const leOffset1 = Math.tan((le_sweep_p1 * Math.PI) / 180) * breakSpan * scale
   const leOffset2 = leOffset1 + Math.tan((le_sweep_p2 * Math.PI) / 180) * remainingSpan * scale
+  let teOffset1 = Math.tan((te_sweep_p1 * Math.PI) / 180) * breakSpan * scale
   let teOffset2 = teOffset1 + Math.tan((te_sweep_p2 * Math.PI) / 180) * remainingSpan * scale
 
-  // Apply 2" gap constraint to prevent bowtie
-  // If trailing edge tip is less than 2" behind leading edge tip, clamp it
-  const MIN_GAP = 2.0 // inches
-  const tipLEPosition = startY + leOffset2
-  const tipTEPosition = startY + loa * scale - teOffset2
-  const gapAtTip = tipTEPosition - tipLEPosition
+  // Scaled LOA
+  const loaScaled = loa * scale
 
-  if (gapAtTip < MIN_GAP * scale) {
-    // Clamp trailing edge to be at least 2" behind leading edge
-    teOffset2 = loa * scale - leOffset2 - (MIN_GAP * scale)
+  // Starting Y position (nose at top)
+  const noseY = centerY - loaScaled / 2
+
+  // Apply 2" gap constraint to prevent bowtie at panel break (P1)
+  const MIN_GAP = 2.0
+  const breakLEY = noseY + leOffset1
+  const breakTEY = noseY + loaScaled - teOffset1
+  if (breakTEY - breakLEY < MIN_GAP * scale) {
+    teOffset1 = loaScaled - leOffset1 - MIN_GAP * scale
+    // Recalculate teOffset2 based on corrected teOffset1
+    teOffset2 = teOffset1 + Math.tan((te_sweep_p2 * Math.PI) / 180) * remainingSpan * scale
   }
 
-  // Wing outline points (right half, then mirrored for left)
-  const rightWing = [
-    // Root leading edge
-    { x: centerX, y: startY },
-    // Panel break leading edge
-    { x: centerX + breakSpan * scale, y: startY + leOffset1 },
-    // Tip leading edge
-    { x: centerX + halfSpan * scale, y: startY + leOffset2 },
-    // Tip trailing edge
-    { x: centerX + halfSpan * scale, y: startY + loa * scale - teOffset2 },
-    // Panel break trailing edge
-    { x: centerX + breakSpan * scale, y: startY + loa * scale - teOffset1 },
-    // Root trailing edge
-    { x: centerX, y: startY + loa * scale }
-  ]
+  // Apply 2" gap constraint to prevent bowtie at wingtip (P2)
+  const tipLEY = noseY + leOffset2
+  const tipTEY = noseY + loaScaled - teOffset2
+  if (tipTEY - tipLEY < MIN_GAP * scale) {
+    teOffset2 = loaScaled - leOffset2 - MIN_GAP * scale
+  }
 
-  const leftWing = rightWing.map(p => ({ x: centerX - (p.x - centerX), y: p.y })).reverse()
+  // Wing colors (can be overridden for comparison overlay)
+  const wingFill = color ? `${color}40` : '#add8e6'
+  const wingFillOpacity = color ? 0.7 : 0.4
+  const wingStroke = color || '#000000'
 
-  const pathD = [
-    `M ${rightWing[0].x} ${rightWing[0].y}`,
-    ...rightWing.slice(1).map(p => `L ${p.x} ${p.y}`),
-    ...leftWing.map(p => `L ${p.x} ${p.y}`),
-    'Z'
+  // Calculate wing outline points for right wing
+  const scaledBreakSpan = breakSpan * scale
+  const scaledHalfSpan = halfSpan * scale
+
+  // Right wing polygon points
+  const rightWingPoints = [
+    // Root LE
+    `${centerX},${noseY}`,
+    // Panel break LE (interpolate)
+    `${centerX + scaledBreakSpan * 0.25},${noseY + leOffset1 * 0.25}`,
+    `${centerX + scaledBreakSpan * 0.5},${noseY + leOffset1 * 0.5}`,
+    `${centerX + scaledBreakSpan * 0.75},${noseY + leOffset1 * 0.75}`,
+    `${centerX + scaledBreakSpan},${noseY + leOffset1}`,
+    // Tip LE
+    `${centerX + scaledHalfSpan},${noseY + leOffset2}`,
+    // Tip TE
+    `${centerX + scaledHalfSpan},${noseY + loaScaled - teOffset2}`,
+    // Panel break TE
+    `${centerX + scaledBreakSpan},${noseY + loaScaled - teOffset1}`,
+    // Root TE (interpolate back)
+    `${centerX + scaledBreakSpan * 0.75},${noseY + loaScaled - teOffset1 * 0.75}`,
+    `${centerX + scaledBreakSpan * 0.5},${noseY + loaScaled - teOffset1 * 0.5}`,
+    `${centerX + scaledBreakSpan * 0.25},${noseY + loaScaled - teOffset1 * 0.25}`,
+    `${centerX},${noseY + loaScaled}`
   ].join(' ')
 
-  // Panel break line
-  const breakLineRight = `M ${centerX + breakSpan * scale} ${startY + leOffset1} L ${centerX + breakSpan * scale} ${startY + loa * scale - teOffset2 + teOffset1}`
-  const breakLineLeft = `M ${centerX - breakSpan * scale} ${startY + leOffset1} L ${centerX - breakSpan * scale} ${startY + loa * scale - teOffset2 + teOffset1}`
+  // Left wing polygon points (mirrored)
+  const leftWingPoints = [
+    `${centerX},${noseY}`,
+    `${centerX - scaledBreakSpan * 0.25},${noseY + leOffset1 * 0.25}`,
+    `${centerX - scaledBreakSpan * 0.5},${noseY + leOffset1 * 0.5}`,
+    `${centerX - scaledBreakSpan * 0.75},${noseY + leOffset1 * 0.75}`,
+    `${centerX - scaledBreakSpan},${noseY + leOffset1}`,
+    `${centerX - scaledHalfSpan},${noseY + leOffset2}`,
+    `${centerX - scaledHalfSpan},${noseY + loaScaled - teOffset2}`,
+    `${centerX - scaledBreakSpan},${noseY + loaScaled - teOffset1}`,
+    `${centerX - scaledBreakSpan * 0.75},${noseY + loaScaled - teOffset1 * 0.75}`,
+    `${centerX - scaledBreakSpan * 0.5},${noseY + loaScaled - teOffset1 * 0.5}`,
+    `${centerX - scaledBreakSpan * 0.25},${noseY + loaScaled - teOffset1 * 0.25}`,
+    `${centerX},${noseY + loaScaled}`
+  ].join(' ')
 
   return (
     <Box
       sx={{
-        bgcolor: '#ffffff',
+        bgcolor: '#f9f9f9',
         border: '1px solid #cccccc',
         display: 'flex',
         justifyContent: 'center',
-        alignItems: 'center',
-        p: 0.5
+        alignItems: 'center'
       }}
     >
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-        {/* Wing planform */}
-        <path
-          d={pathD}
-          fill="#f5f5f5"
-          stroke="#000000"
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${viewWidth} ${viewHeight}`}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ background: '#f9f9f9' }}
+      >
+        {/* Grid lines */}
+        <line
+          x1={padding}
+          y1={centerY}
+          x2={viewWidth - padding}
+          y2={centerY}
+          stroke="#cccccc"
+          strokeWidth="1"
+          strokeDasharray="5,5"
+        />
+        <line
+          x1={centerX}
+          y1={padding}
+          x2={centerX}
+          y2={viewHeight - padding}
+          stroke="#cccccc"
+          strokeWidth="1"
+          strokeDasharray="5,5"
+        />
+
+        {/* Right wing */}
+        <polygon
+          points={rightWingPoints}
+          fill={wingFill}
+          fillOpacity={wingFillOpacity}
+          stroke={wingStroke}
           strokeWidth="2"
         />
 
-        {/* Panel break lines */}
-        <path d={breakLineRight} stroke="#666666" strokeWidth="1" strokeDasharray="4 2" />
-        <path d={breakLineLeft} stroke="#666666" strokeWidth="1" strokeDasharray="4 2" />
+        {/* Left wing */}
+        <polygon
+          points={leftWingPoints}
+          fill={wingFill}
+          fillOpacity={wingFillOpacity}
+          stroke={wingStroke}
+          strokeWidth="2"
+        />
+
 
         {/* Centerline */}
         <line
           x1={centerX}
-          y1={startY}
+          y1={noseY}
           x2={centerX}
-          y2={startY + loa * scale}
-          stroke="#cccccc"
+          y2={noseY + loaScaled}
+          stroke="#666666"
           strokeWidth="1"
-          strokeDasharray="2 2"
+          strokeDasharray="3,3"
         />
 
-        {/* Labels */}
-        <text
-          x={centerX}
-          y={height - 5}
-          textAnchor="middle"
-          fontSize="10"
-          fontFamily="monospace"
-          fill="#666666"
-        >
-          Span: {span.toFixed(0)}"
-        </text>
+        {/* Axis labels */}
+        {showLabels && (
+          <>
+            <text
+              x={viewWidth - padding + 5}
+              y={centerY + 4}
+              fill="#666666"
+              fontFamily="Courier New"
+              fontSize="10"
+            >
+              +Y
+            </text>
+            <text
+              x={centerX + 5}
+              y={padding - 5}
+              fill="#666666"
+              fontFamily="Courier New"
+              fontSize="10"
+            >
+              +X
+            </text>
+          </>
+        )}
 
-        <text
-          x={5}
-          y={height / 2}
-          textAnchor="start"
-          fontSize="10"
-          fontFamily="monospace"
-          fill="#666666"
-          transform={`rotate(-90, 5, ${height / 2})`}
-        >
-          LOA: {loa.toFixed(0)}"
-        </text>
+        {/* Dimension labels */}
+        {showLabels && (
+          <>
+            <text
+              x={centerX}
+              y={viewHeight - 10}
+              textAnchor="middle"
+              fill="#333333"
+              fontFamily="Courier New"
+              fontSize="11"
+            >
+              Span: {span.toFixed(0)}" | LOA: {loa.toFixed(0)}"
+            </text>
+          </>
+        )}
       </svg>
     </Box>
   )

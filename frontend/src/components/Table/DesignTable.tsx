@@ -10,13 +10,19 @@ import {
   TableRow,
   TablePagination,
   TableSortLabel,
-  Button
+  Button,
+  Checkbox
 } from '@mui/material'
 import Planform from '../Visualization/Planform'
 import type { DesignResult } from '../../types'
 
 interface DesignTableProps {
   designs: DesignResult[]
+  selectedDesigns?: DesignResult[]
+  onSelectionChange?: (designs: DesignResult[]) => void
+  maxSelections?: number
+  highlightedIndex?: number | null
+  onRowClick?: (index: number) => void
 }
 
 // Numeric keys that can be safely sorted
@@ -24,7 +30,14 @@ type NumericSortKey = 'loa' | 'span' | 'le_sweep_p1' | 'le_sweep_p2' | 'te_sweep
   'panel_break' | 'range_nm' | 'endurance_hr' | 'mtow_lbm' | 'cost_usd' | 'wingtip_deflection_in'
 type SortOrder = 'asc' | 'desc'
 
-export default function DesignTable({ designs }: DesignTableProps) {
+export default function DesignTable({
+  designs,
+  selectedDesigns = [],
+  onSelectionChange,
+  maxSelections = 4,
+  highlightedIndex,
+  onRowClick
+}: DesignTableProps) {
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const [sortKey, setSortKey] = useState<NumericSortKey>('range_nm')
@@ -36,7 +49,34 @@ export default function DesignTable({ designs }: DesignTableProps) {
     setSortKey(key)
   }
 
-  const sortedDesigns = [...designs].sort((a, b) => {
+  // Check if a design is selected (by comparing key properties)
+  const isSelected = (design: DesignResult) => {
+    return selectedDesigns.some(
+      d => d.loa === design.loa && d.span === design.span &&
+           d.le_sweep_p1 === design.le_sweep_p1 && d.range_nm === design.range_nm
+    )
+  }
+
+  const handleToggleSelection = (design: DesignResult, e: React.MouseEvent) => {
+    e.stopPropagation() // Don't trigger row click
+    if (!onSelectionChange) return
+
+    if (isSelected(design)) {
+      // Remove from selection
+      onSelectionChange(selectedDesigns.filter(
+        d => !(d.loa === design.loa && d.span === design.span &&
+               d.le_sweep_p1 === design.le_sweep_p1 && d.range_nm === design.range_nm)
+      ))
+    } else if (selectedDesigns.length < maxSelections) {
+      // Add to selection
+      onSelectionChange([...selectedDesigns, design])
+    }
+  }
+
+  // Track original indices for highlighting
+  const indexedDesigns = designs.map((d, i) => ({ ...d, originalIndex: i }))
+
+  const sortedDesigns = [...indexedDesigns].sort((a, b) => {
     const aVal = a[sortKey]
     const bVal = b[sortKey]
     return sortOrder === 'asc' ? aVal - bVal : bVal - aVal
@@ -114,10 +154,26 @@ export default function DesignTable({ designs }: DesignTableProps) {
         </Button>
       </Box>
 
+      <Typography
+        sx={{
+          fontFamily: 'monospace',
+          fontSize: '0.8em',
+          color: '#666666',
+          mb: 1
+        }}
+      >
+        Click a row to view planform details
+      </Typography>
+
       <TableContainer>
         <Table size="small" sx={{ '& *': { fontFamily: 'monospace !important' } }}>
           <TableHead>
             <TableRow sx={{ bgcolor: '#e0e0e0' }}>
+              {onSelectionChange && (
+                <TableCell sx={{ fontWeight: 'bold', borderBottom: '2px solid #000000', width: 50 }}>
+                  Compare
+                </TableCell>
+              )}
               <TableCell sx={{ fontWeight: 'bold', borderBottom: '2px solid #000000' }}>
                 Planform
               </TableCell>
@@ -143,15 +199,41 @@ export default function DesignTable({ designs }: DesignTableProps) {
             </TableRow>
           </TableHead>
           <TableBody>
-            {paginatedDesigns.map((design, idx) => (
+            {paginatedDesigns.map((design, idx) => {
+              const selected = isSelected(design)
+              const disabled = !selected && selectedDesigns.length >= maxSelections
+              const isHighlighted = design.originalIndex === highlightedIndex
+              return (
               <TableRow
                 key={idx}
+                onClick={() => onRowClick?.(design.originalIndex)}
                 sx={{
-                  '&:nth-of-type(odd)': { bgcolor: '#ffffff' },
-                  '&:nth-of-type(even)': { bgcolor: '#f5f5f5' },
-                  '&:hover': { bgcolor: '#e0e0e0' }
+                  cursor: onRowClick ? 'pointer' : 'default',
+                  '&:nth-of-type(odd)': {
+                    bgcolor: isHighlighted ? '#bbdefb' : selected ? '#e3f2fd' : '#ffffff'
+                  },
+                  '&:nth-of-type(even)': {
+                    bgcolor: isHighlighted ? '#bbdefb' : selected ? '#e3f2fd' : '#f5f5f5'
+                  },
+                  '&:hover': { bgcolor: isHighlighted ? '#90caf9' : selected ? '#bbdefb' : '#e0e0e0' },
+                  border: isHighlighted ? '2px solid #1565c0' : 'none'
                 }}
               >
+                {onSelectionChange && (
+                  <TableCell sx={{ p: 0.5 }}>
+                    <Checkbox
+                      checked={selected}
+                      disabled={disabled}
+                      onClick={(e) => handleToggleSelection(design, e)}
+                      size="small"
+                      sx={{
+                        color: '#666666',
+                        '&.Mui-checked': { color: '#1976d2' },
+                        '&.Mui-disabled': { color: '#cccccc' }
+                      }}
+                    />
+                  </TableCell>
+                )}
                 <TableCell sx={{ p: 0.5 }}>
                   <Planform design={design} width={140} height={100} />
                 </TableCell>
@@ -163,7 +245,7 @@ export default function DesignTable({ designs }: DesignTableProps) {
                 <TableCell>${design.cost_usd.toLocaleString()}</TableCell>
                 <TableCell>{design.wingtip_deflection_in.toFixed(1)}</TableCell>
               </TableRow>
-            ))}
+            )})}
           </TableBody>
         </Table>
       </TableContainer>
