@@ -7,6 +7,7 @@ export interface Constraints {
   max_cost_usd?: number
   max_mtow_lbm?: number
   min_endurance_hr?: number
+  max_wingtip_deflection_in?: number
 }
 
 export interface DesignParameters {
@@ -24,10 +25,12 @@ export interface PredictionResult {
   endurance_hr: number
   mtow_lbm: number
   cost_usd: number
+  wingtip_deflection_in: number
   range_nm_uncertainty?: number
   endurance_hr_uncertainty?: number
   mtow_lbm_uncertainty?: number
   cost_usd_uncertainty?: number
+  wingtip_deflection_in_uncertainty?: number
 }
 
 export interface DesignResult extends DesignParameters, PredictionResult {
@@ -35,6 +38,7 @@ export interface DesignResult extends DesignParameters, PredictionResult {
   uncertainty_endurance_hr: number
   uncertainty_mtow_lbm: number
   uncertainty_cost_usd: number
+  uncertainty_wingtip_deflection_in: number
 }
 
 export interface OptimizeResponse {

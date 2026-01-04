@@ -39,6 +39,14 @@ const constraintConfig = [
     max: 40,
     step: 1,
     default: 8
+  },
+  {
+    key: 'max_wingtip_deflection_in' as keyof Constraints,
+    label: 'Maximum Wingtip Deflection (in)',
+    min: 0,
+    max: 100,
+    step: 1,
+    default: 30
   }
 ]
 
@@ -47,19 +55,22 @@ const presets = {
     min_range_nm: 2500,
     max_cost_usd: 50000,
     max_mtow_lbm: 5000,
-    min_endurance_hr: 15
+    min_endurance_hr: 15,
+    max_wingtip_deflection_in: 40
   },
   'Low Cost': {
     min_range_nm: 1000,
     max_cost_usd: 25000,
     max_mtow_lbm: 2500,
-    min_endurance_hr: 5
+    min_endurance_hr: 5,
+    max_wingtip_deflection_in: 25
   },
   'Balanced': {
     min_range_nm: 1500,
     max_cost_usd: 35000,
     max_mtow_lbm: 3000,
-    min_endurance_hr: 8
+    min_endurance_hr: 8,
+    max_wingtip_deflection_in: 30
   }
 }
 

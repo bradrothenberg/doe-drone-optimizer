@@ -125,7 +125,8 @@ export default function DesignTable({ designs }: DesignTableProps) {
                 { key: 'range_nm', label: 'Range (nm)' },
                 { key: 'endurance_hr', label: 'Endurance (hr)' },
                 { key: 'mtow_lbm', label: 'MTOW (lbm)' },
-                { key: 'cost_usd', label: 'Cost ($)' }
+                { key: 'cost_usd', label: 'Cost ($)' },
+                { key: 'wingtip_deflection_in', label: 'Tip Defl (in)' }
               ].map(({ key, label }) => (
                 <TableCell key={key} sx={{ fontWeight: 'bold', borderBottom: '2px solid #000000' }}>
                   <TableSortLabel
@@ -158,6 +159,7 @@ export default function DesignTable({ designs }: DesignTableProps) {
                 <TableCell>{design.endurance_hr.toFixed(1)}</TableCell>
                 <TableCell>{design.mtow_lbm.toFixed(0)}</TableCell>
                 <TableCell>${design.cost_usd.toLocaleString()}</TableCell>
+                <TableCell>{design.wingtip_deflection_in.toFixed(1)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

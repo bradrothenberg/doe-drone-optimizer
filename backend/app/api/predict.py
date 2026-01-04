@@ -68,7 +68,8 @@ async def predict_performance(request_data: PredictRequest, request: Request):
                 'range_nm': float(predictions[i, 0]),
                 'endurance_hr': float(predictions[i, 1]),
                 'mtow_lbm': float(predictions[i, 2]),
-                'cost_usd': float(predictions[i, 3])
+                'cost_usd': float(predictions[i, 3]),
+                'wingtip_deflection_in': float(predictions[i, 4])
             }
 
             # Add uncertainty if requested
@@ -77,6 +78,7 @@ async def predict_performance(request_data: PredictRequest, request: Request):
                 result_dict['endurance_hr_uncertainty'] = float(uncertainty[i, 1])
                 result_dict['mtow_lbm_uncertainty'] = float(uncertainty[i, 2])
                 result_dict['cost_usd_uncertainty'] = float(uncertainty[i, 3])
+                result_dict['wingtip_deflection_in_uncertainty'] = float(uncertainty[i, 4])
 
             results.append(PredictionResult(**result_dict))
 

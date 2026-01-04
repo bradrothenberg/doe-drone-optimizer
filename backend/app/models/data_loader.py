@@ -31,10 +31,11 @@ class DOEDataLoader:
     ]
 
     PRIMARY_OUTPUTS = [
-        'range_nm',             # Range in nautical miles
-        'endurance_hr',         # Endurance in hours
-        'mtow_lbm',             # Max Takeoff Weight in pounds
-        'material_cost_usd'     # Material cost in USD
+        'range_nm',                  # Range in nautical miles
+        'endurance_hr',              # Endurance in hours
+        'mtow_lbm',                  # Max Takeoff Weight in pounds
+        'material_cost_usd',         # Material cost in USD
+        'wingtip_deflection_in'      # Wingtip deflection in inches
     ]
 
     ADDITIONAL_OUTPUTS = [

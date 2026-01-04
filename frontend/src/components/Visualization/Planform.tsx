@@ -34,7 +34,19 @@ export default function Planform({ design, width = 200, height = 150 }: Planform
 
   const remainingSpan = halfSpan - breakSpan
   const leOffset2 = leOffset1 + Math.tan((le_sweep_p2 * Math.PI) / 180) * remainingSpan * scale
-  const teOffset2 = teOffset1 + Math.tan((te_sweep_p2 * Math.PI) / 180) * remainingSpan * scale
+  let teOffset2 = teOffset1 + Math.tan((te_sweep_p2 * Math.PI) / 180) * remainingSpan * scale
+
+  // Apply 2" gap constraint to prevent bowtie
+  // If trailing edge tip is less than 2" behind leading edge tip, clamp it
+  const MIN_GAP = 2.0 // inches
+  const tipLEPosition = startY + leOffset2
+  const tipTEPosition = startY + loa * scale - teOffset2
+  const gapAtTip = tipTEPosition - tipLEPosition
+
+  if (gapAtTip < MIN_GAP * scale) {
+    // Clamp trailing edge to be at least 2" behind leading edge
+    teOffset2 = loa * scale - leOffset2 - (MIN_GAP * scale)
+  }
 
   // Wing outline points (right half, then mirrored for left)
   const rightWing = [
