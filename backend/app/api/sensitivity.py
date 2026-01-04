@@ -73,6 +73,20 @@ INPUT_LABELS = {
 }
 
 
+def predict_single(ensemble_model, feature_engineer, inputs: np.ndarray) -> dict:
+    """Helper to predict outputs for a single design point"""
+    X_eng = feature_engineer.transform(inputs)
+    predictions, _ = ensemble_model.predict(X_eng, return_uncertainty=False)
+    return {
+        'range_nm': float(predictions[0, 0]),
+        'endurance_hr': float(predictions[0, 1]),
+        'mtow_lbm': float(predictions[0, 2]),
+        'cost_usd': float(predictions[0, 3]),
+        # Clamp wingtip deflection to non-negative (model can extrapolate to negative)
+        'wingtip_deflection_in': float(max(0, predictions[0, 4]))
+    }
+
+
 @router.post("/sensitivity", response_model=SensitivityResponse)
 async def compute_sensitivity(request: SensitivityRequest, req: Request):
     """
@@ -84,8 +98,12 @@ async def compute_sensitivity(request: SensitivityRequest, req: Request):
     start_time = time.time()
 
     model_manager = req.app.state.model_manager
-    if not model_manager or not model_manager.is_loaded():
+    if not model_manager or not model_manager.is_loaded:
         raise HTTPException(status_code=503, detail="Models not loaded")
+
+    # Get models
+    ensemble_model = model_manager.get_ensemble_model()
+    feature_engineer = model_manager.get_feature_engineer()
 
     design = request.design
     pct = request.perturbation_pct / 100.0
@@ -97,8 +115,7 @@ async def compute_sensitivity(request: SensitivityRequest, req: Request):
     ]])
 
     # Get base prediction
-    base_pred = model_manager.predict(base_inputs)
-    base_outputs = base_pred['predictions'][0]
+    base_outputs = predict_single(ensemble_model, feature_engineer, base_inputs)
 
     sensitivities = []
     input_names = list(INPUT_BOUNDS.keys())
@@ -119,8 +136,7 @@ async def compute_sensitivity(request: SensitivityRequest, req: Request):
         perturbed_inputs[0, i] = perturbed_val
 
         # Get perturbed prediction
-        perturbed_pred = model_manager.predict(perturbed_inputs)
-        perturbed_outputs = perturbed_pred['predictions'][0]
+        perturbed_outputs = predict_single(ensemble_model, feature_engineer, perturbed_inputs)
 
         # Compute deltas
         sensitivity = InputSensitivity(

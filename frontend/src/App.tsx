@@ -8,7 +8,16 @@ import DesignTable from './components/Table/DesignTable'
 import DesignComparison from './components/Comparison/DesignComparison'
 import SelectedDesignPanel from './components/Selection/SelectedDesignPanel'
 import { useOptimization } from './hooks/useOptimization'
-import type { Constraints, DesignResult } from './types'
+import type { Constraints, OptimizationObjectives, DesignResult } from './types'
+
+// Default objectives
+const defaultObjectives: OptimizationObjectives = {
+  range_nm: 'maximize',
+  endurance_hr: 'maximize',
+  mtow_lbm: 'minimize',
+  cost_usd: 'minimize',
+  wingtip_deflection_in: 'minimize'
+}
 
 function App() {
   // Constraints that have been submitted for optimization
@@ -19,17 +28,19 @@ function App() {
     min_endurance_hr: undefined,
     max_wingtip_deflection_in: undefined
   })
+  const [submittedObjectives, setSubmittedObjectives] = useState<OptimizationObjectives>(defaultObjectives)
   const [selectedDesigns, setSelectedDesigns] = useState<DesignResult[]>([])
   const [shouldRun, setShouldRun] = useState(false)
   const [highlightedDesignIndex, setHighlightedDesignIndex] = useState<number | null>(null)
 
-  const { data, isLoading, error } = useOptimization(submittedConstraints, shouldRun)
+  const { data, isLoading, error } = useOptimization(submittedConstraints, submittedObjectives, shouldRun)
 
   // Handle optimization trigger
-  const handleRunOptimization = useCallback((newConstraints: Constraints) => {
+  const handleRunOptimization = useCallback((newConstraints: Constraints, newObjectives: OptimizationObjectives) => {
     setSelectedDesigns([])
     setHighlightedDesignIndex(null)
     setSubmittedConstraints(newConstraints)
+    setSubmittedObjectives(newObjectives)
     setShouldRun(true)
   }, [])
 
@@ -57,6 +68,7 @@ function App() {
       <Box sx={{ mt: 4 }}>
         <ConstraintForm
           constraints={submittedConstraints}
+          objectives={submittedObjectives}
           onUpdate={handleRunOptimization}
           isOptimizing={isLoading}
           hasResults={!!data}
@@ -109,6 +121,8 @@ function App() {
             <SelectedDesignPanel
               design={highlightedDesign}
               designIndex={highlightedDesignIndex ?? undefined}
+              totalDesigns={data.pareto_designs.length}
+              onNavigate={handleSelectDesign}
             />
           </Box>
 

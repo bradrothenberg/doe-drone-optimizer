@@ -29,8 +29,8 @@ class EnsembleDroneModel:
 
     def __init__(
         self,
-        xgb_weight: float = 0.6,
-        nn_weight: float = 0.4
+        xgb_weight: float = 1.0,
+        nn_weight: float = 0.0
     ):
         """
         Initialize ensemble model
