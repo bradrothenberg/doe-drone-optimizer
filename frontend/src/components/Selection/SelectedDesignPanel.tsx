@@ -1,10 +1,13 @@
-import { Box, Typography } from '@mui/material'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Box, Typography, TextField } from '@mui/material'
 import type { DesignResult } from '../../types'
 import Planform from '../Visualization/Planform'
 
 interface SelectedDesignPanelProps {
   design: DesignResult | null
   designIndex?: number
+  totalDesigns?: number
+  onNavigate?: (newIndex: number) => void
 }
 
 interface MetricItemProps {
@@ -46,7 +49,108 @@ function MetricItem({ label, value, bgColor = '#f9f9f9', borderColor = '#cccccc'
   )
 }
 
-export default function SelectedDesignPanel({ design, designIndex }: SelectedDesignPanelProps) {
+// Navigation arrow button styled like the reference
+function NavArrowButton({ direction, onClick, disabled }: { direction: 'prev' | 'next', onClick: () => void, disabled: boolean }) {
+  return (
+    <Box
+      component="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={direction === 'prev' ? 'Previous design (Left Arrow)' : 'Next design (Right Arrow)'}
+      sx={{
+        background: '#ffffff',
+        color: disabled ? '#cccccc' : '#333333',
+        border: '1px solid #cccccc',
+        padding: '8px 14px',
+        fontFamily: "'Courier New', monospace",
+        fontSize: '1.3em',
+        cursor: disabled ? 'default' : 'pointer',
+        transition: 'background-color 0.15s, border-color 0.15s',
+        '&:hover:not(:disabled)': {
+          background: '#e0e0e0',
+          borderColor: '#999999'
+        },
+        '&:disabled': {
+          opacity: 0.5
+        }
+      }}
+    >
+      {direction === 'prev' ? '←' : '→'}
+    </Box>
+  )
+}
+
+export default function SelectedDesignPanel({ design, designIndex, totalDesigns, onNavigate }: SelectedDesignPanelProps) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Handle keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!design || !onNavigate || totalDesigns === undefined || designIndex === undefined) return
+      if (isEditing) return // Don't navigate while editing
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        if (designIndex > 0) {
+          onNavigate(designIndex - 1)
+        }
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        if (designIndex < totalDesigns - 1) {
+          onNavigate(designIndex + 1)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [design, designIndex, totalDesigns, onNavigate, isEditing])
+
+  // Focus input when editing starts
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [isEditing])
+
+  const handleDoubleClick = useCallback(() => {
+    if (designIndex !== undefined) {
+      setEditValue(String(designIndex + 1))
+      setIsEditing(true)
+    }
+  }, [designIndex])
+
+  const handleEditSubmit = useCallback(() => {
+    const newIndex = parseInt(editValue, 10) - 1
+    if (!isNaN(newIndex) && newIndex >= 0 && totalDesigns !== undefined && newIndex < totalDesigns && onNavigate) {
+      onNavigate(newIndex)
+    }
+    setIsEditing(false)
+  }, [editValue, totalDesigns, onNavigate])
+
+  const handleEditKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleEditSubmit()
+    } else if (e.key === 'Escape') {
+      setIsEditing(false)
+    }
+  }, [handleEditSubmit])
+
+  const handlePrev = useCallback(() => {
+    if (designIndex !== undefined && designIndex > 0 && onNavigate) {
+      onNavigate(designIndex - 1)
+    }
+  }, [designIndex, onNavigate])
+
+  const handleNext = useCallback(() => {
+    if (designIndex !== undefined && totalDesigns !== undefined && designIndex < totalDesigns - 1 && onNavigate) {
+      onNavigate(designIndex + 1)
+    }
+  }, [designIndex, totalDesigns, onNavigate])
+
   if (!design) {
     return (
       <Box
@@ -90,6 +194,9 @@ export default function SelectedDesignPanel({ design, designIndex }: SelectedDes
     )
   }
 
+  const canNavigatePrev = designIndex !== undefined && designIndex > 0
+  const canNavigateNext = designIndex !== undefined && totalDesigns !== undefined && designIndex < totalDesigns - 1
+
   return (
     <Box
       sx={{
@@ -113,6 +220,64 @@ export default function SelectedDesignPanel({ design, designIndex }: SelectedDes
         Wing Planform View
       </Typography>
 
+      {/* Navigation controls */}
+      {designIndex !== undefined && totalDesigns !== undefined && onNavigate && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 2,
+            mb: 2
+          }}
+        >
+          <NavArrowButton direction="prev" onClick={handlePrev} disabled={!canNavigatePrev} />
+
+          {isEditing ? (
+            <TextField
+              inputRef={inputRef}
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={handleEditSubmit}
+              onKeyDown={handleEditKeyDown}
+              size="small"
+              sx={{
+                width: 80,
+                '& .MuiInputBase-input': {
+                  fontFamily: 'monospace',
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                  padding: '6px 8px'
+                }
+              }}
+            />
+          ) : (
+            <Typography
+              onDoubleClick={handleDoubleClick}
+              sx={{
+                fontFamily: 'monospace',
+                fontSize: '1.1em',
+                fontWeight: 'bold',
+                color: '#000000',
+                cursor: 'pointer',
+                padding: '4px 12px',
+                border: '1px solid transparent',
+                borderRadius: '4px',
+                '&:hover': {
+                  bgcolor: '#e0e0e0',
+                  border: '1px solid #cccccc'
+                }
+              }}
+              title="Double-click to enter design number"
+            >
+              Design {designIndex + 1} of {totalDesigns}
+            </Typography>
+          )}
+
+          <NavArrowButton direction="next" onClick={handleNext} disabled={!canNavigateNext} />
+        </Box>
+      )}
+
       {/* Planform visualization */}
       <Box sx={{ mb: 2 }}>
         <Planform design={design} width={350} height={300} />
@@ -126,9 +291,6 @@ export default function SelectedDesignPanel({ design, designIndex }: SelectedDes
           gap: 1.25
         }}
       >
-        {designIndex !== undefined && (
-          <MetricItem label="Design #" value={designIndex + 1} />
-        )}
         <MetricItem label="Range" value={`${design.range_nm.toFixed(0)} nm`} />
         <MetricItem label="MTOW" value={`${design.mtow_lbm.toFixed(0)} lbm`} />
         <MetricItem label="Endurance" value={`${design.endurance_hr.toFixed(1)} hr`} />

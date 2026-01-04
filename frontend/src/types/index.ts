@@ -67,8 +67,19 @@ export interface PredictResponse {
   model_info?: Record<string, unknown>
 }
 
+export type OptimizationDirection = 'minimize' | 'maximize'
+
+export interface OptimizationObjectives {
+  range_nm?: OptimizationDirection
+  endurance_hr?: OptimizationDirection
+  mtow_lbm?: OptimizationDirection
+  cost_usd?: OptimizationDirection
+  wingtip_deflection_in?: OptimizationDirection
+}
+
 export interface OptimizeRequest {
   constraints?: Constraints
+  objectives?: OptimizationObjectives
   population_size?: number
   n_generations?: number
   n_designs?: number
