@@ -199,6 +199,152 @@ def engineer_features(
         return X_engineered
 
 
+class FixedSpanFeatureEngineer:
+    """
+    Feature engineer for fixed-span (12ft) model
+
+    Raw features (6) - NO SPAN:
+    - LOA (Length Overall)
+    - LE Sweep P1/P2 (Leading Edge sweeps)
+    - TE Sweep P1/P2 (Trailing Edge sweeps)
+    - Panel Break (span fraction)
+
+    Derived features (10):
+    - Same as FeatureEngineer but with span fixed at 144 inches
+    """
+
+    FIXED_SPAN = 144.0  # 12 feet in inches
+
+    def __init__(self):
+        self.feature_names = []
+
+    def fit(self, X: np.ndarray, feature_names: list = None) -> 'FixedSpanFeatureEngineer':
+        """
+        Fit feature engineer (compute feature names)
+
+        Args:
+            X: Raw input features (n_samples, 6) - NO span column
+            feature_names: List of raw feature names
+
+        Returns:
+            self
+        """
+        if feature_names is None:
+            feature_names = [
+                'LOA', 'LE_Sweep_P1', 'LE_Sweep_P2',
+                'TE_Sweep_P1', 'TE_Sweep_P2', 'Panel_Break'
+            ]
+
+        self.raw_feature_names = feature_names
+        self.feature_names = self._get_all_feature_names()
+
+        logger.info(f"Fixed-span feature engineering: {len(self.raw_feature_names)} raw → "
+                   f"{len(self.feature_names)} engineered features")
+
+        return self
+
+    def transform(self, X: np.ndarray) -> np.ndarray:
+        """
+        Transform raw features into engineered features
+
+        Args:
+            X: Raw input features (n_samples, 6)
+               Columns: [LOA, LE_Sweep_P1, LE_Sweep_P2,
+                        TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+
+        Returns:
+            Engineered features (n_samples, 16)
+        """
+        # Extract raw features (span is fixed, not in input)
+        loa = X[:, 0]          # Length Overall (inches)
+        le_sweep_p1 = X[:, 1]  # LE sweep panel 1 (degrees)
+        le_sweep_p2 = X[:, 2]  # LE sweep panel 2 (degrees)
+        te_sweep_p1 = X[:, 3]  # TE sweep panel 1 (degrees)
+        te_sweep_p2 = X[:, 4]  # TE sweep panel 2 (degrees)
+        panel_break = X[:, 5]  # Panel break location (fraction 0-1)
+
+        # Fixed span for all samples
+        span = np.full_like(loa, self.FIXED_SPAN)
+
+        # Derived features list
+        features = []
+
+        # 1. Raw features (6) - no span
+        features.extend([
+            loa, le_sweep_p1, le_sweep_p2,
+            te_sweep_p1, te_sweep_p2, panel_break
+        ])
+
+        # 2. Aspect ratio proxy (span^2 / wing_area_estimate)
+        wing_area_proxy = loa * span
+        aspect_ratio_proxy = span ** 2 / (wing_area_proxy + 1e-6)
+        features.append(aspect_ratio_proxy)
+
+        # 3. Sweep differentials (indicate wing taper)
+        sweep_diff_p1 = te_sweep_p1 - le_sweep_p1
+        sweep_diff_p2 = te_sweep_p2 - le_sweep_p2
+        features.extend([sweep_diff_p1, sweep_diff_p2])
+
+        # 4. Average sweeps
+        avg_le_sweep = (le_sweep_p1 + le_sweep_p2) / 2.0
+        avg_te_sweep = (te_sweep_p1 + te_sweep_p2) / 2.0
+        features.extend([avg_le_sweep, avg_te_sweep])
+
+        # 5. Sweep asymmetry (difference between panels)
+        sweep_asymmetry = np.abs(le_sweep_p1 - le_sweep_p2)
+        features.append(sweep_asymmetry)
+
+        # 6. Wing loading proxy (inverse of wing area)
+        wing_loading_proxy = 1000.0 / (wing_area_proxy + 1e-6)
+        features.append(wing_loading_proxy)
+
+        # 7. Planform complexity (sum of absolute sweep differentials)
+        planform_complexity = np.abs(sweep_diff_p1) + np.abs(sweep_diff_p2)
+        features.append(planform_complexity)
+
+        # 8. Span to LOA ratio (wing slenderness) - uses fixed span
+        span_loa_ratio = span / (loa + 1e-6)
+        features.append(span_loa_ratio)
+
+        # 9. Panel break interaction with sweep
+        panel_break_sweep_interaction = panel_break * avg_le_sweep
+        features.append(panel_break_sweep_interaction)
+
+        # Stack all features
+        X_engineered = np.column_stack(features)
+
+        return X_engineered
+
+    def fit_transform(self, X: np.ndarray, feature_names: list = None) -> np.ndarray:
+        """Fit and transform in one step"""
+        self.fit(X, feature_names)
+        return self.transform(X)
+
+    def get_feature_names(self) -> list:
+        """Get list of all engineered feature names"""
+        return self.feature_names.copy()
+
+    def _get_all_feature_names(self) -> list:
+        """Generate list of all feature names"""
+        names = self.raw_feature_names.copy()
+
+        # Add derived feature names
+        names.extend([
+            'Aspect_Ratio_Proxy',
+            'Sweep_Diff_P1',
+            'Sweep_Diff_P2',
+            'Avg_LE_Sweep',
+            'Avg_TE_Sweep',
+            'Sweep_Asymmetry',
+            'Wing_Loading_Proxy',
+            'Planform_Complexity',
+            'Span_LOA_Ratio',
+            'Panel_Break_Sweep_Interaction'
+        ])
+
+        return names
+
+
 # Feature importance analysis utilities
 def analyze_feature_correlations(X: np.ndarray, y: np.ndarray, feature_names: list) -> pd.DataFrame:
     """
