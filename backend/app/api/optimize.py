@@ -42,6 +42,7 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
 
         # Extract constraints
         constraints_dict = {}
+        allow_unrealistic_taper = False
         if request_data.constraints:
             if request_data.constraints.min_range_nm is not None:
                 constraints_dict['min_range_nm'] = request_data.constraints.min_range_nm
@@ -53,6 +54,8 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                 constraints_dict['min_endurance_hr'] = request_data.constraints.min_endurance_hr
             if request_data.constraints.max_wingtip_deflection_in is not None:
                 constraints_dict['max_wingtip_deflection_in'] = request_data.constraints.max_wingtip_deflection_in
+            # Extract allow_unrealistic_taper flag
+            allow_unrealistic_taper = request_data.constraints.allow_unrealistic_taper
 
         # Extract objectives (optimization directions)
         objectives_dict = None
@@ -95,7 +98,8 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                 population_size=request_data.population_size,
                 n_generations=request_data.n_generations,
                 seed=42,
-                fixed_span=fixed_span
+                fixed_span=fixed_span,
+                allow_unrealistic_taper=allow_unrealistic_taper
             )
 
             feasible = True
@@ -124,7 +128,8 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                         population_size=request_data.population_size,
                         n_generations=request_data.n_generations,
                         seed=42,
-                        fixed_span=fixed_span
+                        fixed_span=fixed_span,
+                        allow_unrealistic_taper=allow_unrealistic_taper
                     )
 
                     constraint_relaxation_applied = {

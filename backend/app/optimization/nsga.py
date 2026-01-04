@@ -66,7 +66,8 @@ class DroneDesignProblem(Problem):
         feature_engineer,
         user_constraints: Optional[Dict] = None,
         objectives: Optional[Dict[str, str]] = None,
-        fixed_span: Optional[float] = None
+        fixed_span: Optional[float] = None,
+        allow_unrealistic_taper: bool = False
     ):
         """
         Initialize drone design optimization problem
@@ -77,11 +78,13 @@ class DroneDesignProblem(Problem):
             user_constraints: Optional user-specified constraints
             objectives: Dict mapping output names to 'minimize' or 'maximize'
             fixed_span: If provided, use fixed-span mode with this span value (inches)
+            allow_unrealistic_taper: If True, skip taper ratio and bowtie filtering
         """
         self.ensemble_model = ensemble_model
         self.feature_engineer = feature_engineer
         self.user_constraints = user_constraints or {}
         self.fixed_span = fixed_span
+        self.allow_unrealistic_taper = allow_unrealistic_taper
 
         # Merge user objectives with defaults
         self.objectives = self.DEFAULT_OBJECTIVES.copy()
@@ -141,53 +144,55 @@ class DroneDesignProblem(Problem):
         penalty = np.zeros(len(X))
 
         # Geometric feasibility penalty: penalize unrealistic taper ratios and bowtie wings
-        # Extract design variables based on mode
-        if self.fixed_span is not None:
-            # Fixed-span mode: [LOA, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
-            loa = X[:, 0]
-            span = np.full(len(X), self.fixed_span)  # Fixed span
-            le_sweep_p1 = X[:, 1]
-            le_sweep_p2 = X[:, 2]
-            te_sweep_p1 = X[:, 3]
-            te_sweep_p2 = X[:, 4]
-            panel_break = X[:, 5]
-        else:
-            # Variable-span mode: [LOA, Span, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
-            loa = X[:, 0]
-            span = X[:, 1]
-            le_sweep_p1 = X[:, 2]
-            le_sweep_p2 = X[:, 3]
-            te_sweep_p1 = X[:, 4]
-            te_sweep_p2 = X[:, 5]
-            panel_break = X[:, 6]
+        # Only apply if allow_unrealistic_taper is False
+        if not self.allow_unrealistic_taper:
+            # Extract design variables based on mode
+            if self.fixed_span is not None:
+                # Fixed-span mode: [LOA, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+                loa = X[:, 0]
+                span = np.full(len(X), self.fixed_span)  # Fixed span
+                le_sweep_p1 = X[:, 1]
+                le_sweep_p2 = X[:, 2]
+                te_sweep_p1 = X[:, 3]
+                te_sweep_p2 = X[:, 4]
+                panel_break = X[:, 5]
+            else:
+                # Variable-span mode: [LOA, Span, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+                loa = X[:, 0]
+                span = X[:, 1]
+                le_sweep_p1 = X[:, 2]
+                le_sweep_p2 = X[:, 3]
+                te_sweep_p1 = X[:, 4]
+                te_sweep_p2 = X[:, 5]
+                panel_break = X[:, 6]
 
-        # Taper ratio penalty
-        taper_diff_p2 = te_sweep_p2 - le_sweep_p2
-        MIN_TAPER_DIFF = -5  # Allow slight expansion, but penalize severe negative taper
-        taper_violation = np.maximum(0, MIN_TAPER_DIFF - taper_diff_p2)
-        penalty += taper_violation * 100  # Strong penalty for unrealistic geometry
+            # Taper ratio penalty
+            taper_diff_p2 = te_sweep_p2 - le_sweep_p2
+            MIN_TAPER_DIFF = -5  # Allow slight expansion, but penalize severe negative taper
+            taper_violation = np.maximum(0, MIN_TAPER_DIFF - taper_diff_p2)
+            penalty += taper_violation * 100  # Strong penalty for unrealistic geometry
 
-        # Bowtie penalty: penalize designs where chord becomes too small
-        half_span = span / 2
-        break_span = half_span * panel_break
-        remaining_span = half_span - break_span
+            # Bowtie penalty: penalize designs where chord becomes too small
+            half_span = span / 2
+            break_span = half_span * panel_break
+            remaining_span = half_span - break_span
 
-        le_sweep_p1_rad = np.radians(le_sweep_p1)
-        le_sweep_p2_rad = np.radians(le_sweep_p2)
-        te_sweep_p1_rad = np.radians(te_sweep_p1)
-        te_sweep_p2_rad = np.radians(te_sweep_p2)
+            le_sweep_p1_rad = np.radians(le_sweep_p1)
+            le_sweep_p2_rad = np.radians(le_sweep_p2)
+            te_sweep_p1_rad = np.radians(te_sweep_p1)
+            te_sweep_p2_rad = np.radians(te_sweep_p2)
 
-        # Chord at panel break and tip
-        chord_at_break = loa - break_span * (np.tan(le_sweep_p1_rad) + np.tan(te_sweep_p1_rad))
-        le_offset_at_break = np.tan(le_sweep_p1_rad) * break_span
-        te_offset_at_break = np.tan(te_sweep_p1_rad) * break_span
-        chord_at_tip = loa - (le_offset_at_break + np.tan(le_sweep_p2_rad) * remaining_span) - \
-                       (te_offset_at_break + np.tan(te_sweep_p2_rad) * remaining_span)
+            # Chord at panel break and tip
+            chord_at_break = loa - break_span * (np.tan(le_sweep_p1_rad) + np.tan(te_sweep_p1_rad))
+            le_offset_at_break = np.tan(le_sweep_p1_rad) * break_span
+            te_offset_at_break = np.tan(te_sweep_p1_rad) * break_span
+            chord_at_tip = loa - (le_offset_at_break + np.tan(le_sweep_p2_rad) * remaining_span) - \
+                           (te_offset_at_break + np.tan(te_sweep_p2_rad) * remaining_span)
 
-        MIN_CHORD = 2.0  # Minimum chord in inches
-        chord_violation_break = np.maximum(0, MIN_CHORD - chord_at_break)
-        chord_violation_tip = np.maximum(0, MIN_CHORD - chord_at_tip)
-        penalty += (chord_violation_break + chord_violation_tip) * 500  # Very strong penalty for bowtie
+            MIN_CHORD = 2.0  # Minimum chord in inches
+            chord_violation_break = np.maximum(0, MIN_CHORD - chord_at_break)
+            chord_violation_tip = np.maximum(0, MIN_CHORD - chord_at_tip)
+            penalty += (chord_violation_break + chord_violation_tip) * 500  # Very strong penalty for bowtie
 
         if 'min_range_nm' in self.user_constraints:
             min_range = self.user_constraints['min_range_nm']
@@ -241,7 +246,8 @@ def run_nsga2_optimization(
     population_size: int = 200,
     n_generations: int = 100,
     seed: int = 42,
-    fixed_span: Optional[float] = None
+    fixed_span: Optional[float] = None,
+    allow_unrealistic_taper: bool = False
 ) -> Dict[str, Any]:
     """
     Run NSGA-II optimization to find Pareto-optimal designs
@@ -255,6 +261,7 @@ def run_nsga2_optimization(
         n_generations: Number of generations
         seed: Random seed for reproducibility
         fixed_span: If provided, use fixed-span mode with this span value (inches)
+        allow_unrealistic_taper: If True, skip taper ratio and bowtie filtering
 
     Returns:
         Dictionary with optimization results
@@ -266,6 +273,8 @@ def run_nsga2_optimization(
         logger.info(f"Fixed-span mode: span={fixed_span} inches")
     if objectives:
         logger.info(f"Custom objectives: {objectives}")
+    if allow_unrealistic_taper:
+        logger.info("Allowing unrealistic taper ratios and bowtie geometries")
 
     # Create problem
     problem = DroneDesignProblem(
@@ -273,7 +282,8 @@ def run_nsga2_optimization(
         feature_engineer=feature_engineer,
         user_constraints=user_constraints,
         objectives=objectives,
-        fixed_span=fixed_span
+        fixed_span=fixed_span,
+        allow_unrealistic_taper=allow_unrealistic_taper
     )
 
     # Configure NSGA-II algorithm
@@ -335,108 +345,76 @@ def run_nsga2_optimization(
     feasible_mask = np.ones(len(pareto_designs), dtype=bool)
 
     # Geometric feasibility: filter out unrealistic taper ratios and bowtie wings
-    # Extract design variables based on mode
-    if fixed_span is not None:
-        # Fixed-span mode: [LOA, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
-        loa = pareto_designs[:, 0]
-        span = np.full(len(pareto_designs), fixed_span)  # Fixed span
-        le_sweep_p1 = pareto_designs[:, 1]
-        le_sweep_p2 = pareto_designs[:, 2]
-        te_sweep_p1 = pareto_designs[:, 3]
-        te_sweep_p2 = pareto_designs[:, 4]
-        panel_break = pareto_designs[:, 5]
-    else:
-        # Variable-span mode: [LOA, Span, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
-        loa = pareto_designs[:, 0]
-        span = pareto_designs[:, 1]
-        le_sweep_p1 = pareto_designs[:, 2]
-        le_sweep_p2 = pareto_designs[:, 3]
-        te_sweep_p1 = pareto_designs[:, 4]
-        te_sweep_p2 = pareto_designs[:, 5]
-        panel_break = pareto_designs[:, 6]
+    # Only apply if allow_unrealistic_taper is False
+    if not allow_unrealistic_taper:
+        # Extract design variables based on mode
+        if fixed_span is not None:
+            # Fixed-span mode: [LOA, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+            loa = pareto_designs[:, 0]
+            span = np.full(len(pareto_designs), fixed_span)  # Fixed span
+            le_sweep_p1 = pareto_designs[:, 1]
+            le_sweep_p2 = pareto_designs[:, 2]
+            te_sweep_p1 = pareto_designs[:, 3]
+            te_sweep_p2 = pareto_designs[:, 4]
+            panel_break = pareto_designs[:, 5]
+        else:
+            # Variable-span mode: [LOA, Span, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+            loa = pareto_designs[:, 0]
+            span = pareto_designs[:, 1]
+            le_sweep_p1 = pareto_designs[:, 2]
+            le_sweep_p2 = pareto_designs[:, 3]
+            te_sweep_p1 = pareto_designs[:, 4]
+            te_sweep_p2 = pareto_designs[:, 5]
+            panel_break = pareto_designs[:, 6]
 
-    # Taper ratio constraint: TE sweep should be >= LE sweep for each panel
-    # This prevents "negative taper" where chord expands toward the tip
-    # Allow small tolerance (5 degrees) for slightly expanding outer panels
-    MIN_TAPER_DIFF = -5  # Minimum (TE_sweep - LE_sweep), negative allows slight expansion
-    taper_diff_p1 = te_sweep_p1 - le_sweep_p1
-    taper_diff_p2 = te_sweep_p2 - le_sweep_p2
+        # Taper ratio constraint: TE sweep should be >= LE sweep for each panel
+        # This prevents "negative taper" where chord expands toward the tip
+        # Allow small tolerance (5 degrees) for slightly expanding outer panels
+        MIN_TAPER_DIFF = -5  # Minimum (TE_sweep - LE_sweep), negative allows slight expansion
+        taper_diff_p1 = te_sweep_p1 - le_sweep_p1
+        taper_diff_p2 = te_sweep_p2 - le_sweep_p2
 
-    # Filter out designs with unrealistic taper (especially on outer panel P2)
-    feasible_mask &= (taper_diff_p2 >= MIN_TAPER_DIFF)
+        # Filter out designs with unrealistic taper (especially on outer panel P2)
+        feasible_mask &= (taper_diff_p2 >= MIN_TAPER_DIFF)
 
-    n_taper_filtered = np.sum(~(taper_diff_p2 >= MIN_TAPER_DIFF))
-    if n_taper_filtered > 0:
-        logger.info(f"Filtered {n_taper_filtered} designs with unrealistic outer panel taper ratio")
+        n_taper_filtered = np.sum(~(taper_diff_p2 >= MIN_TAPER_DIFF))
+        if n_taper_filtered > 0:
+            logger.info(f"Filtered {n_taper_filtered} designs with unrealistic outer panel taper ratio")
 
-    # Bowtie detection: chord must be positive at panel break and wingtip
-    # Chord at a spanwise location = LOA - (LE_offset + TE_offset)
-    # where offsets are computed from sweep angles
-    half_span = span / 2
-    break_span = half_span * panel_break
-    remaining_span = half_span - break_span
+        # Bowtie detection: chord must be positive at panel break and wingtip
+        half_span = span / 2
+        break_span = half_span * panel_break
+        remaining_span = half_span - break_span
 
-    # Convert sweep angles to radians for tangent calculation
-    le_sweep_p1_rad = np.radians(le_sweep_p1)
-    le_sweep_p2_rad = np.radians(le_sweep_p2)
-    te_sweep_p1_rad = np.radians(te_sweep_p1)
-    te_sweep_p2_rad = np.radians(te_sweep_p2)
+        # Convert sweep angles to radians for tangent calculation
+        le_sweep_p1_rad = np.radians(le_sweep_p1)
+        le_sweep_p2_rad = np.radians(le_sweep_p2)
+        te_sweep_p1_rad = np.radians(te_sweep_p1)
+        te_sweep_p2_rad = np.radians(te_sweep_p2)
 
-    # LE and TE offsets at panel break (measured from root chord endpoints)
-    le_offset_at_break = np.tan(le_sweep_p1_rad) * break_span
-    te_offset_at_break = np.tan(te_sweep_p1_rad) * break_span
+        # LE and TE offsets at panel break (measured from root chord endpoints)
+        le_offset_at_break = np.tan(le_sweep_p1_rad) * break_span
+        te_offset_at_break = np.tan(te_sweep_p1_rad) * break_span
 
-    # LE and TE offsets at wingtip
-    le_offset_at_tip = le_offset_at_break + np.tan(le_sweep_p2_rad) * remaining_span
-    te_offset_at_tip = te_offset_at_break + np.tan(te_sweep_p2_rad) * remaining_span
+        # Chord at panel break
+        chord_at_break = loa - break_span * (np.tan(le_sweep_p1_rad) + np.tan(te_sweep_p1_rad))
 
-    # Chord at panel break = LOA - (le_offset - te_offset) when both sweep forward
-    # More precisely: chord = (TE_y - LE_y) where TE_y = LOA - te_offset, LE_y = le_offset
-    # So chord = LOA - te_offset - le_offset (when both sweep back, offsets are positive)
-    # Actually: chord_at_break = LOA - le_offset_at_break - (-te_offset_at_break) if TE sweeps forward
-    # Simpler: chord = (root_TE_y - te_offset) - (root_LE_y + le_offset) = LOA - le_offset - te_offset
-    # Wait, need to be careful with signs. Let me compute properly:
-    # At root: LE_y = 0, TE_y = LOA, chord = LOA
-    # At panel break: LE_y = tan(le_sweep_p1) * break_span (positive = aft)
-    #                 TE_y = LOA - tan(te_sweep_p1) * break_span (positive sweep = TE moves aft = smaller offset from LOA)
-    # So chord_at_break = TE_y - LE_y = LOA - tan(te_sweep_p1)*break_span - tan(le_sweep_p1)*break_span
-    #                   = LOA - break_span * (tan(le_sweep_p1) + tan(te_sweep_p1))
-    # Hmm, that's not quite right either. Let me think again...
-    #
-    # Using the Planform.tsx logic:
-    # LE offset (how far aft the LE moves) = tan(le_sweep) * span_distance
-    # TE offset (how far aft the TE moves from the root TE) = tan(te_sweep) * span_distance
-    # At panel break:
-    #   LE_y = leOffset1 = tan(le_sweep_p1) * break_span
-    #   TE_y = LOA - teOffset1 = LOA - tan(te_sweep_p1) * break_span
-    #   chord = TE_y - LE_y = LOA - tan(te_sweep_p1)*break_span - tan(le_sweep_p1)*break_span
-    # Bowtie if chord <= 0, i.e., LOA <= break_span * (tan(le_sweep_p1) + tan(te_sweep_p1))
+        # Chord at wingtip
+        chord_at_tip = loa - (le_offset_at_break + np.tan(le_sweep_p2_rad) * remaining_span) - \
+                       (te_offset_at_break + np.tan(te_sweep_p2_rad) * remaining_span)
 
-    # Chord at panel break
-    chord_at_break = loa - break_span * (np.tan(le_sweep_p1_rad) + np.tan(te_sweep_p1_rad))
+        # Minimum chord requirement (in inches) - must have at least some positive chord
+        MIN_CHORD = 2.0  # 2 inches minimum chord
 
-    # Chord at wingtip
-    # LE_y at tip = le_offset_at_break + tan(le_sweep_p2) * remaining_span
-    # TE_y at tip = LOA - (te_offset_at_break + tan(te_sweep_p2) * remaining_span)
-    # chord at tip = TE_y - LE_y
-    chord_at_tip = loa - (le_offset_at_break + np.tan(le_sweep_p2_rad) * remaining_span) - \
-                   (te_offset_at_break + np.tan(te_sweep_p2_rad) * remaining_span)
-    # Simplify: chord_at_tip = LOA - le_offset_at_tip - te_offset_at_tip
-    #                        = LOA - half_span * (tan(le_sweep_p1)*pb + tan(le_sweep_p2)*(1-pb) +
-    #                                             tan(te_sweep_p1)*pb + tan(te_sweep_p2)*(1-pb))
+        bowtie_at_break = chord_at_break < MIN_CHORD
+        bowtie_at_tip = chord_at_tip < MIN_CHORD
+        bowtie_mask = bowtie_at_break | bowtie_at_tip
 
-    # Minimum chord requirement (in inches) - must have at least some positive chord
-    MIN_CHORD = 2.0  # 2 inches minimum chord
+        feasible_mask &= ~bowtie_mask
 
-    bowtie_at_break = chord_at_break < MIN_CHORD
-    bowtie_at_tip = chord_at_tip < MIN_CHORD
-    bowtie_mask = bowtie_at_break | bowtie_at_tip
-
-    feasible_mask &= ~bowtie_mask
-
-    n_bowtie_filtered = np.sum(bowtie_mask)
-    if n_bowtie_filtered > 0:
-        logger.info(f"Filtered {n_bowtie_filtered} designs with bowtie geometry (chord < {MIN_CHORD}in)")
+        n_bowtie_filtered = np.sum(bowtie_mask)
+        if n_bowtie_filtered > 0:
+            logger.info(f"Filtered {n_bowtie_filtered} designs with bowtie geometry (chord < {MIN_CHORD}in)")
 
     if user_constraints:
         if 'min_range_nm' in user_constraints and user_constraints['min_range_nm'] is not None:

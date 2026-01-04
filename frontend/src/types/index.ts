@@ -8,6 +8,7 @@ export interface Constraints {
   max_mtow_lbm?: number
   min_endurance_hr?: number
   max_wingtip_deflection_in?: number
+  allow_unrealistic_taper?: boolean
 }
 
 export interface DesignParameters {
