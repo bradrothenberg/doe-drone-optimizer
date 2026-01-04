@@ -1,0 +1,23 @@
+# Root level dockerignore for context optimization
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# IDE
+.idea/
+.vscode/
+
+# CI/CD
+.github/
+
+# Local environment files
+.env.local
+.env.*.local
+
+# Plans
+*.plan
