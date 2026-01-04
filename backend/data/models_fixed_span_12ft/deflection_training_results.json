@@ -1,0 +1,37 @@
+{
+  "training_date": "2026-01-04T15:06:30.383319",
+  "model_type": "DeflectionSpecialist",
+  "techniques": [
+    "log_transform",
+    "sample_weighting",
+    "structural_features"
+  ],
+  "dataset": {
+    "source": "D:\\nTop\\DOERunner\\gcp_10000sample_fixed_span_12ft\\doe_summary.csv",
+    "n_train": 6956,
+    "n_val": 1486,
+    "n_test": 1490,
+    "outliers_removed": 62,
+    "zeros_removed": 5
+  },
+  "metrics": {
+    "test_r2": 0.16289939976407453,
+    "test_mae": 0.19782678377545868
+  },
+  "feature_importance": {
+    "loa_inverse": 0.3437838852405548,
+    "ar_proxy": 0.33973559737205505,
+    "sweep_diff_total": 0.09543558210134506,
+    "loa": 0.04010149464011192,
+    "le_sweep_p1": 0.03818246349692345,
+    "te_sweep_p1": 0.030575059354305267,
+    "panel_break": 0.026202576234936714,
+    "max_abs_sweep": 0.025432031601667404,
+    "panel_sweep_interaction": 0.017384544014930725,
+    "sweep_product": 0.00978446938097477,
+    "te_sweep_severity": 0.009208070114254951,
+    "le_sweep_p2": 0.009176334366202354,
+    "te_sweep_product": 0.008352858945727348,
+    "te_sweep_p2": 0.006645075511187315
+  }
+}

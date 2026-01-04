@@ -76,6 +76,11 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
         if warnings:
             logger.warning(f"Constraint warnings: {'; '.join(warnings)}")
 
+        # Get fixed_span from model manager (None for variable-span mode)
+        fixed_span = model_manager.get_fixed_span()
+        if fixed_span:
+            logger.info(f"Using fixed-span mode: span={fixed_span} inches")
+
         # Attempt optimization
         constraint_relaxation_applied = None
         optimization_error = None
@@ -89,7 +94,8 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                 objectives=objectives_dict,
                 population_size=request_data.population_size,
                 n_generations=request_data.n_generations,
-                seed=42
+                seed=42,
+                fixed_span=fixed_span
             )
 
             feasible = True
@@ -117,7 +123,8 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                         objectives=objectives_dict,
                         population_size=request_data.population_size,
                         n_generations=request_data.n_generations,
-                        seed=42
+                        seed=42,
+                        fixed_span=fixed_span
                     )
 
                     constraint_relaxation_applied = {
@@ -188,29 +195,53 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                 'wingtip_deflection_in': uncertainty['wingtip_deflection_in'][selected_idx]
             }
 
-        # Build response
+        # Build response - handle both fixed-span (6 cols) and variable-span (7 cols)
         design_results = []
         for i in range(len(pareto_designs)):
             design = pareto_designs[i]
-            design_result = DesignResult(
-                loa=float(design[0]),
-                span=float(design[1]),
-                le_sweep_p1=float(design[2]),
-                le_sweep_p2=float(design[3]),
-                te_sweep_p1=float(design[4]),
-                te_sweep_p2=float(design[5]),
-                panel_break=float(design[6]),
-                range_nm=float(pareto_objectives['range_nm'][i]),
-                endurance_hr=float(pareto_objectives['endurance_hr'][i]),
-                mtow_lbm=float(pareto_objectives['mtow_lbm'][i]),
-                cost_usd=float(pareto_objectives['cost_usd'][i]),
-                wingtip_deflection_in=float(pareto_objectives['wingtip_deflection_in'][i]),
-                uncertainty_range_nm=float(uncertainty['range_nm'][i]),
-                uncertainty_endurance_hr=float(uncertainty['endurance_hr'][i]),
-                uncertainty_mtow_lbm=float(uncertainty['mtow_lbm'][i]),
-                uncertainty_cost_usd=float(uncertainty['cost_usd'][i]),
-                uncertainty_wingtip_deflection_in=float(uncertainty['wingtip_deflection_in'][i])
-            )
+
+            if fixed_span is not None:
+                # Fixed-span mode: [LOA, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+                design_result = DesignResult(
+                    loa=float(design[0]),
+                    span=float(fixed_span),  # Use fixed span value
+                    le_sweep_p1=float(design[1]),
+                    le_sweep_p2=float(design[2]),
+                    te_sweep_p1=float(design[3]),
+                    te_sweep_p2=float(design[4]),
+                    panel_break=float(design[5]),
+                    range_nm=float(pareto_objectives['range_nm'][i]),
+                    endurance_hr=float(pareto_objectives['endurance_hr'][i]),
+                    mtow_lbm=float(pareto_objectives['mtow_lbm'][i]),
+                    cost_usd=float(pareto_objectives['cost_usd'][i]),
+                    wingtip_deflection_in=float(pareto_objectives['wingtip_deflection_in'][i]),
+                    uncertainty_range_nm=float(uncertainty['range_nm'][i]),
+                    uncertainty_endurance_hr=float(uncertainty['endurance_hr'][i]),
+                    uncertainty_mtow_lbm=float(uncertainty['mtow_lbm'][i]),
+                    uncertainty_cost_usd=float(uncertainty['cost_usd'][i]),
+                    uncertainty_wingtip_deflection_in=float(uncertainty['wingtip_deflection_in'][i])
+                )
+            else:
+                # Variable-span mode: [LOA, Span, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+                design_result = DesignResult(
+                    loa=float(design[0]),
+                    span=float(design[1]),
+                    le_sweep_p1=float(design[2]),
+                    le_sweep_p2=float(design[3]),
+                    te_sweep_p1=float(design[4]),
+                    te_sweep_p2=float(design[5]),
+                    panel_break=float(design[6]),
+                    range_nm=float(pareto_objectives['range_nm'][i]),
+                    endurance_hr=float(pareto_objectives['endurance_hr'][i]),
+                    mtow_lbm=float(pareto_objectives['mtow_lbm'][i]),
+                    cost_usd=float(pareto_objectives['cost_usd'][i]),
+                    wingtip_deflection_in=float(pareto_objectives['wingtip_deflection_in'][i]),
+                    uncertainty_range_nm=float(uncertainty['range_nm'][i]),
+                    uncertainty_endurance_hr=float(uncertainty['endurance_hr'][i]),
+                    uncertainty_mtow_lbm=float(uncertainty['mtow_lbm'][i]),
+                    uncertainty_cost_usd=float(uncertainty['cost_usd'][i]),
+                    uncertainty_wingtip_deflection_in=float(uncertainty['wingtip_deflection_in'][i])
+                )
             design_results.append(design_result)
 
         optimization_time_s = time.time() - start_time

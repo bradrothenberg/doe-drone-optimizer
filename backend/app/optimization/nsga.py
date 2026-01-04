@@ -1,6 +1,7 @@
 """
 NSGA-II Multi-Objective Optimizer for Drone Design
 Uses pymoo library for genetic algorithm-based optimization
+Supports both variable-span (7 inputs) and fixed-span (6 inputs) modes
 """
 
 import numpy as np
@@ -14,6 +15,8 @@ from pymoo.termination import get_termination
 from typing import Dict, List, Tuple, Any, Optional
 import logging
 
+from app.core.config import settings
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -22,7 +25,7 @@ class DroneDesignProblem(Problem):
     """
     Multi-objective optimization problem for drone design
 
-    Design Variables (7):
+    Variable-Span Mode - Design Variables (7):
     - LOA (Length Overall): 96-192 inches
     - Span: 72-216 inches
     - LE Sweep P1: 0-65 degrees
@@ -30,6 +33,15 @@ class DroneDesignProblem(Problem):
     - TE Sweep P1: -60-60 degrees
     - TE Sweep P2: -60-60 degrees
     - Panel Break: 0.10-0.65 (fraction of span)
+
+    Fixed-Span Mode - Design Variables (6):
+    - LOA (Length Overall): 96-192 inches
+    - LE Sweep P1: 0-65 degrees
+    - LE Sweep P2: -20-60 degrees
+    - TE Sweep P1: -60-60 degrees
+    - TE Sweep P2: -60-60 degrees
+    - Panel Break: 0.10-0.65 (fraction of span)
+    (Span is fixed at 144 inches / 12 feet)
 
     Objectives (5) - directions are configurable:
     - Range (nm) - default: maximize
@@ -53,7 +65,8 @@ class DroneDesignProblem(Problem):
         ensemble_model,
         feature_engineer,
         user_constraints: Optional[Dict] = None,
-        objectives: Optional[Dict[str, str]] = None
+        objectives: Optional[Dict[str, str]] = None,
+        fixed_span: Optional[float] = None
     ):
         """
         Initialize drone design optimization problem
@@ -63,22 +76,36 @@ class DroneDesignProblem(Problem):
             feature_engineer: Feature engineering pipeline
             user_constraints: Optional user-specified constraints
             objectives: Dict mapping output names to 'minimize' or 'maximize'
+            fixed_span: If provided, use fixed-span mode with this span value (inches)
         """
         self.ensemble_model = ensemble_model
         self.feature_engineer = feature_engineer
         self.user_constraints = user_constraints or {}
+        self.fixed_span = fixed_span
 
         # Merge user objectives with defaults
         self.objectives = self.DEFAULT_OBJECTIVES.copy()
         if objectives:
             self.objectives.update(objectives)
 
-        # Design variable bounds (from DOE dataset)
-        xl = np.array([96, 72, 0, -20, -60, -60, 0.10])   # Lower bounds
-        xu = np.array([192, 216, 65, 60, 60, 60, 0.65])  # Upper bounds
+        # Design variable bounds depend on mode
+        if fixed_span is not None:
+            # Fixed-span mode: 6 design variables (no span)
+            # Order: [LOA, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+            xl = np.array([96, 0, -20, -60, -60, 0.10])   # Lower bounds
+            xu = np.array([192, 65, 60, 60, 60, 0.65])    # Upper bounds
+            n_var = 6
+            logger.info(f"Using FIXED-SPAN mode (span={fixed_span} inches)")
+        else:
+            # Variable-span mode: 7 design variables (includes span)
+            # Order: [LOA, Span, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+            xl = np.array([96, 72, 0, -20, -60, -60, 0.10])   # Lower bounds
+            xu = np.array([192, 216, 65, 60, 60, 60, 0.65])   # Upper bounds
+            n_var = 7
+            logger.info("Using VARIABLE-SPAN mode")
 
         super().__init__(
-            n_var=7,        # 7 design variables
+            n_var=n_var,
             n_obj=5,        # 5 objectives
             n_constr=0,     # No hard constraints (using penalty method)
             xl=xl,
@@ -90,7 +117,7 @@ class DroneDesignProblem(Problem):
         Evaluate objectives for given design parameters
 
         Args:
-            X: Design parameters (n_designs, 7)
+            X: Design parameters (n_designs, 6 or 7 depending on mode)
             out: Output dictionary to store objectives
         """
         # Engineer features
@@ -114,14 +141,25 @@ class DroneDesignProblem(Problem):
         penalty = np.zeros(len(X))
 
         # Geometric feasibility penalty: penalize unrealistic taper ratios and bowtie wings
-        # Design variables: [LOA, Span, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
-        loa = X[:, 0]
-        span = X[:, 1]
-        le_sweep_p1 = X[:, 2]
-        le_sweep_p2 = X[:, 3]
-        te_sweep_p1 = X[:, 4]
-        te_sweep_p2 = X[:, 5]
-        panel_break = X[:, 6]
+        # Extract design variables based on mode
+        if self.fixed_span is not None:
+            # Fixed-span mode: [LOA, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+            loa = X[:, 0]
+            span = np.full(len(X), self.fixed_span)  # Fixed span
+            le_sweep_p1 = X[:, 1]
+            le_sweep_p2 = X[:, 2]
+            te_sweep_p1 = X[:, 3]
+            te_sweep_p2 = X[:, 4]
+            panel_break = X[:, 5]
+        else:
+            # Variable-span mode: [LOA, Span, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+            loa = X[:, 0]
+            span = X[:, 1]
+            le_sweep_p1 = X[:, 2]
+            le_sweep_p2 = X[:, 3]
+            te_sweep_p1 = X[:, 4]
+            te_sweep_p2 = X[:, 5]
+            panel_break = X[:, 6]
 
         # Taper ratio penalty
         taper_diff_p2 = te_sweep_p2 - le_sweep_p2
@@ -202,7 +240,8 @@ def run_nsga2_optimization(
     objectives: Optional[Dict[str, str]] = None,
     population_size: int = 200,
     n_generations: int = 100,
-    seed: int = 42
+    seed: int = 42,
+    fixed_span: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Run NSGA-II optimization to find Pareto-optimal designs
@@ -215,6 +254,7 @@ def run_nsga2_optimization(
         population_size: Population size for NSGA-II
         n_generations: Number of generations
         seed: Random seed for reproducibility
+        fixed_span: If provided, use fixed-span mode with this span value (inches)
 
     Returns:
         Dictionary with optimization results
@@ -222,6 +262,8 @@ def run_nsga2_optimization(
     logger.info("Initializing NSGA-II optimization...")
     logger.info(f"Population size: {population_size}")
     logger.info(f"Generations: {n_generations}")
+    if fixed_span:
+        logger.info(f"Fixed-span mode: span={fixed_span} inches")
     if objectives:
         logger.info(f"Custom objectives: {objectives}")
 
@@ -230,7 +272,8 @@ def run_nsga2_optimization(
         ensemble_model=ensemble_model,
         feature_engineer=feature_engineer,
         user_constraints=user_constraints,
-        objectives=objectives
+        objectives=objectives,
+        fixed_span=fixed_span
     )
 
     # Configure NSGA-II algorithm
@@ -269,7 +312,7 @@ def run_nsga2_optimization(
     logger.info(f"Pareto front size: {len(res.X)}")
 
     # Extract results
-    pareto_designs = res.X  # Design parameters (n_pareto, 7)
+    pareto_designs = res.X  # Design parameters (n_pareto, 6 or 7)
     pareto_objectives = res.F  # Objectives (n_pareto, 5) - includes penalties
 
     # Get clean predictions with uncertainty (without penalties)
@@ -292,14 +335,25 @@ def run_nsga2_optimization(
     feasible_mask = np.ones(len(pareto_designs), dtype=bool)
 
     # Geometric feasibility: filter out unrealistic taper ratios and bowtie wings
-    # Design variables: [LOA, Span, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
-    loa = pareto_designs[:, 0]
-    span = pareto_designs[:, 1]
-    le_sweep_p1 = pareto_designs[:, 2]
-    le_sweep_p2 = pareto_designs[:, 3]
-    te_sweep_p1 = pareto_designs[:, 4]
-    te_sweep_p2 = pareto_designs[:, 5]
-    panel_break = pareto_designs[:, 6]
+    # Extract design variables based on mode
+    if fixed_span is not None:
+        # Fixed-span mode: [LOA, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+        loa = pareto_designs[:, 0]
+        span = np.full(len(pareto_designs), fixed_span)  # Fixed span
+        le_sweep_p1 = pareto_designs[:, 1]
+        le_sweep_p2 = pareto_designs[:, 2]
+        te_sweep_p1 = pareto_designs[:, 3]
+        te_sweep_p2 = pareto_designs[:, 4]
+        panel_break = pareto_designs[:, 5]
+    else:
+        # Variable-span mode: [LOA, Span, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+        loa = pareto_designs[:, 0]
+        span = pareto_designs[:, 1]
+        le_sweep_p1 = pareto_designs[:, 2]
+        le_sweep_p2 = pareto_designs[:, 3]
+        te_sweep_p1 = pareto_designs[:, 4]
+        te_sweep_p2 = pareto_designs[:, 5]
+        panel_break = pareto_designs[:, 6]
 
     # Taper ratio constraint: TE sweep should be >= LE sweep for each panel
     # This prevents "negative taper" where chord expands toward the tip
@@ -439,7 +493,8 @@ def run_nsga2_optimization(
         'n_pareto': n_feasible,
         'n_total_before_filter': n_total,
         'algorithm': 'NSGA-II',
-        'population_size': population_size
+        'population_size': population_size,
+        'fixed_span': fixed_span  # None for variable-span, value for fixed-span mode
     }
 
     return results

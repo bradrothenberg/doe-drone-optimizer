@@ -81,26 +81,30 @@ class EnsembleDroneModel:
     def predict(
         self,
         X: np.ndarray,
+        X_scaled: np.ndarray = None,
         return_uncertainty: bool = True
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Predict with ensemble model and uncertainty quantification
 
         Args:
-            X: Input features (n_samples, n_features)
+            X: Input features (n_samples, n_features), unscaled for XGBoost
+            X_scaled: Scaled features for NN. If None, uses X (assumes same scale)
             return_uncertainty: If True, return uncertainty estimates
 
         Returns:
             Tuple of (predictions, uncertainty)
-            - predictions: (n_samples, 4) weighted average
-            - uncertainty: (n_samples, 4) standard deviation between models
+            - predictions: (n_samples, n_outputs) weighted average
+            - uncertainty: (n_samples, n_outputs) standard deviation between models
         """
         if not self.is_fitted:
             raise ValueError("Models must be set before prediction")
 
         # Get predictions from both models
+        # XGBoost uses unscaled features, NN uses scaled features
         y_pred_xgb = self.xgb_model.predict(X)
-        y_pred_nn = self.nn_model.predict(X)
+        X_nn = X_scaled if X_scaled is not None else X
+        y_pred_nn = self.nn_model.predict(X_nn)
 
         # Weighted average
         y_pred_ensemble = (
@@ -122,15 +126,17 @@ class EnsembleDroneModel:
         self,
         X: np.ndarray,
         y_true: np.ndarray,
-        output_names: list = None
+        output_names: list = None,
+        X_scaled: np.ndarray = None
     ) -> Dict[str, Any]:
         """
         Evaluate ensemble model performance
 
         Args:
-            X: Input features
+            X: Input features (unscaled, for XGBoost)
             y_true: True target values
             output_names: Names of output variables
+            X_scaled: Scaled features for NN. If None, uses X.
 
         Returns:
             Dictionary with evaluation metrics for ensemble and individual models
@@ -141,9 +147,11 @@ class EnsembleDroneModel:
             output_names = ['Range', 'Endurance', 'MTOW', 'Cost']
 
         # Get predictions
-        y_pred_ensemble, uncertainty = self.predict(X, return_uncertainty=True)
+        # XGBoost uses unscaled features, NN uses scaled features
+        X_nn = X_scaled if X_scaled is not None else X
+        y_pred_ensemble, uncertainty = self.predict(X, X_scaled=X_nn, return_uncertainty=True)
         y_pred_xgb = self.xgb_model.predict(X)
-        y_pred_nn = self.nn_model.predict(X)
+        y_pred_nn = self.nn_model.predict(X_nn)
 
         metrics = {
             'ensemble': {'overall': {}, 'per_output': {}},
@@ -265,6 +273,7 @@ def optimize_ensemble_weights(
     nn_model: NeuralNetworkDroneModel,
     X_val: np.ndarray,
     y_val: np.ndarray,
+    X_val_scaled: np.ndarray = None,
     weights_to_try: list = None
 ) -> Tuple[float, float, Dict[str, Any]]:
     """
@@ -273,8 +282,9 @@ def optimize_ensemble_weights(
     Args:
         xgb_model: Trained XGBoost model
         nn_model: Trained Neural Network model
-        X_val: Validation features
+        X_val: Validation features (unscaled, for XGBoost)
         y_val: Validation targets
+        X_val_scaled: Validation features (scaled, for NN). If None, uses X_val.
         weights_to_try: List of (xgb_weight, nn_weight) tuples to try
 
     Returns:
@@ -301,8 +311,10 @@ def optimize_ensemble_weights(
     logger.info("Optimizing ensemble weights...")
 
     # Get predictions from both models
+    # XGBoost uses unscaled features, NN uses scaled features
     y_pred_xgb = xgb_model.predict(X_val)
-    y_pred_nn = nn_model.predict(X_val)
+    X_nn = X_val_scaled if X_val_scaled is not None else X_val
+    y_pred_nn = nn_model.predict(X_nn)
 
     best_r2 = -np.inf
     best_weights = None

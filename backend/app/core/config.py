@@ -3,7 +3,7 @@ Configuration management for FastAPI application
 """
 
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 import os
 
 
@@ -27,10 +27,15 @@ class Settings(BaseSettings):
     cors_allow_headers: List[str] = ["*"]
 
     # Model Configuration
-    models_dir: str = "data/models"
+    # Use fixed-span (12ft) models by default
+    models_dir: str = "data/models_fixed_span_12ft"
     xgb_model_name: str = "xgboost_v1.pkl"
     nn_model_name: str = "neural_v1.pt"
     feature_engineer_name: str = "feature_engineer.pkl"
+
+    # Fixed span configuration (144 inches = 12 feet)
+    # Set to None via env var FIXED_SPAN_INCHES="" to use variable-span models
+    fixed_span_inches: Optional[float] = 144.0
 
     # Optimization defaults
     default_population_size: int = 200

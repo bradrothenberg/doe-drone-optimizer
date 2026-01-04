@@ -78,7 +78,11 @@ class DroneMLPModel(nn.Module):
 
 class NeuralNetworkDroneModel:
     """
-    Wrapper for PyTorch neural network model
+    Wrapper for PyTorch neural network model with internal target scaling.
+
+    Target scaling ensures the NN learns effectively across outputs with
+    different scales (Range: 0-5600, Endurance: 0-37, etc.) while still
+    producing predictions in the original scale for ensemble compatibility.
     """
 
     def __init__(
@@ -109,6 +113,8 @@ class NeuralNetworkDroneModel:
             early_stopping_patience: Patience for early stopping
             device: 'cuda', 'cpu', or None (auto-detect)
         """
+        from sklearn.preprocessing import StandardScaler
+
         # Device selection
         if device is None:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -148,6 +154,11 @@ class NeuralNetworkDroneModel:
             patience=10
         )
 
+        # Target scaler - StandardScaler for better NN convergence
+        # (mean=0, std=1 for each output independently)
+        self.target_scaler = StandardScaler()
+        self.target_scaler_fitted = False
+
         self.is_fitted = False
         self.training_history = {'train_loss': [], 'val_loss': []}
 
@@ -159,13 +170,16 @@ class NeuralNetworkDroneModel:
         y_val: np.ndarray = None
     ) -> 'NeuralNetworkDroneModel':
         """
-        Train neural network
+        Train neural network with internal target scaling.
+
+        Targets are scaled internally during training for better learning,
+        but predictions will be inverse-transformed back to original scale.
 
         Args:
-            X_train: Training features (n_samples, n_features)
-            y_train: Training targets (n_samples, 4)
+            X_train: Training features (n_samples, n_features), should be pre-scaled
+            y_train: Training targets (n_samples, n_outputs), UNSCALED (original values)
             X_val: Validation features (optional, for early stopping)
-            y_val: Validation targets (optional, for early stopping)
+            y_val: Validation targets (optional, for early stopping), UNSCALED
 
         Returns:
             self
@@ -173,9 +187,16 @@ class NeuralNetworkDroneModel:
         logger.info("Training Neural Network...")
         logger.info(f"Training data shape: X={X_train.shape}, y={y_train.shape}")
 
+        # Scale targets internally for better learning (StandardScaler: mean=0, std=1)
+        y_train_scaled = self.target_scaler.fit_transform(y_train)
+        self.target_scaler_fitted = True
+        logger.info(f"Target StandardScaler applied: "
+                   f"scaled_range=[{y_train_scaled.min():.2f}, {y_train_scaled.max():.2f}], "
+                   f"scaled_std={y_train_scaled.std(axis=0)}")
+
         # Convert to PyTorch tensors
         X_train_tensor = torch.FloatTensor(X_train).to(self.device)
-        y_train_tensor = torch.FloatTensor(y_train).to(self.device)
+        y_train_tensor = torch.FloatTensor(y_train_scaled).to(self.device)
 
         # Create DataLoader
         train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
@@ -187,8 +208,10 @@ class NeuralNetworkDroneModel:
 
         # Validation data
         if X_val is not None and y_val is not None:
+            # Scale validation targets using training scaler (no fit!)
+            y_val_scaled = self.target_scaler.transform(y_val)
             X_val_tensor = torch.FloatTensor(X_val).to(self.device)
-            y_val_tensor = torch.FloatTensor(y_val).to(self.device)
+            y_val_tensor = torch.FloatTensor(y_val_scaled).to(self.device)
             has_validation = True
             logger.info(f"Validation data shape: X={X_val.shape}, y={y_val.shape}")
         else:
@@ -267,13 +290,17 @@ class NeuralNetworkDroneModel:
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
-        Predict drone performance metrics
+        Predict drone performance metrics in original scale.
+
+        The model internally uses scaled targets for training, but predictions
+        are inverse-transformed back to the original scale for compatibility
+        with XGBoost and ensemble methods.
 
         Args:
-            X: Input features (n_samples, n_features)
+            X: Input features (n_samples, n_features), should be pre-scaled
 
         Returns:
-            Predictions (n_samples, 4): [Range, Endurance, MTOW, Cost]
+            Predictions (n_samples, n_outputs) in ORIGINAL scale
         """
         if not self.is_fitted:
             raise ValueError("Model must be fitted before prediction")
@@ -282,8 +309,13 @@ class NeuralNetworkDroneModel:
 
         with torch.no_grad():
             X_tensor = torch.FloatTensor(X).to(self.device)
-            y_pred_tensor = self.model(X_tensor)
-            y_pred = y_pred_tensor.cpu().numpy()
+            y_pred_scaled = self.model(X_tensor).cpu().numpy()
+
+        # Inverse transform to original scale
+        if self.target_scaler_fitted:
+            y_pred = self.target_scaler.inverse_transform(y_pred_scaled)
+        else:
+            y_pred = y_pred_scaled
 
         return y_pred
 
@@ -332,33 +364,49 @@ class NeuralNetworkDroneModel:
 
     def save(self, output_path: Path) -> None:
         """
-        Save model to disk
+        Save model to disk including target scaler.
 
         Args:
             output_path: Path to save model file (.pt)
         """
+        import joblib
+
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Save model state
+        # Get hidden_dims from model structure
+        hidden_dims = []
+        for module in self.model.model:
+            if isinstance(module, nn.Linear) and module.out_features != self.model.output_dim:
+                hidden_dims.append(module.out_features)
+
+        # Save model state with full architecture info
         torch.save({
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'training_history': self.training_history,
             'model_config': {
                 'input_dim': self.model.input_dim,
-                'output_dim': self.model.output_dim
+                'output_dim': self.model.output_dim,
+                'hidden_dims': hidden_dims
             }
         }, output_path)
 
         logger.info(f"Saved Neural Network model to {output_path}")
 
+        # Save target scaler separately (sklearn object)
+        if self.target_scaler_fitted:
+            scaler_path = output_path.parent / f"{output_path.stem}_target_scaler.pkl"
+            joblib.dump(self.target_scaler, scaler_path)
+            logger.info(f"Saved target scaler to {scaler_path}")
+
         # Save metadata
         metadata = {
             'model_type': 'Neural Network (MLP)',
-            'n_outputs': 4,
-            'output_names': ['Range', 'Endurance', 'MTOW', 'Cost'],
+            'n_outputs': self.model.output_dim,
+            'output_names': ['range_nm', 'endurance_hr', 'mtow_lbm', 'material_cost_usd', 'wingtip_deflection_in'],
             'is_fitted': self.is_fitted,
+            'target_scaler_fitted': self.target_scaler_fitted,
             'architecture': str(self.model)
         }
 
@@ -368,11 +416,15 @@ class NeuralNetworkDroneModel:
 
     def load(self, input_path: Path) -> None:
         """
-        Load model from disk
+        Load model from disk including target scaler.
+
+        Automatically reconstructs the model architecture from saved config.
 
         Args:
             input_path: Path to model file (.pt)
         """
+        import joblib
+
         input_path = Path(input_path)
 
         if not input_path.exists():
@@ -387,10 +439,34 @@ class NeuralNetworkDroneModel:
             logger.warning("This should only happen with models saved by older PyTorch versions")
             checkpoint = torch.load(input_path, map_location=self.device, weights_only=False)
 
+        # Reconstruct model with correct architecture
+        config = checkpoint.get('model_config', {})
+        input_dim = config.get('input_dim', self.model.input_dim)
+        output_dim = config.get('output_dim', self.model.output_dim)
+        hidden_dims = config.get('hidden_dims', [128, 64, 32])  # Default if not saved
+
+        # Rebuild model if architecture differs
+        if hidden_dims:
+            self.model = DroneMLPModel(
+                input_dim=input_dim,
+                hidden_dims=hidden_dims,
+                output_dim=output_dim
+            ).to(self.device)
+            logger.info(f"Rebuilt model with architecture: {hidden_dims}")
+
         self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.training_history = checkpoint['training_history']
+        self.training_history = checkpoint.get('training_history', {'train_loss': [], 'val_loss': []})
         self.is_fitted = True
+
+        # Load target scaler if it exists
+        scaler_path = input_path.parent / f"{input_path.stem}_target_scaler.pkl"
+        if scaler_path.exists():
+            self.target_scaler = joblib.load(scaler_path)
+            self.target_scaler_fitted = True
+            logger.info(f"Loaded target scaler from {scaler_path}")
+        else:
+            logger.warning(f"Target scaler not found at {scaler_path}, predictions will be in scaled space")
+            self.target_scaler_fitted = False
 
         logger.info(f"Loaded Neural Network model from {input_path}")
 

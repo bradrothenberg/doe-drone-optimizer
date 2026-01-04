@@ -1,5 +1,6 @@
 """
 Prediction endpoint for drone design performance
+Supports both fixed-span (6 inputs) and variable-span (7 inputs) models
 """
 
 from fastapi import APIRouter, Request, HTTPException
@@ -35,29 +36,57 @@ async def predict_performance(request_data: PredictRequest, request: Request):
 
         ensemble_model = model_manager.get_ensemble_model()
         feature_engineer = model_manager.get_feature_engineer()
+        scaler_X = model_manager.get_feature_scaler()
+
+        # Check if using fixed-span model
+        is_fixed_span = model_manager.is_fixed_span_model()
+        fixed_span = model_manager.get_fixed_span()
 
         # Convert designs to numpy array
-        designs_array = np.array([
-            [
-                d.loa,
-                d.span,
-                d.le_sweep_p1,
-                d.le_sweep_p2,
-                d.te_sweep_p1,
-                d.te_sweep_p2,
-                d.panel_break
-            ]
-            for d in request_data.designs
-        ])
+        if is_fixed_span:
+            # Fixed-span model: 6 inputs (no span)
+            designs_array = np.array([
+                [
+                    d.loa,
+                    d.le_sweep_p1,
+                    d.le_sweep_p2,
+                    d.te_sweep_p1,
+                    d.te_sweep_p2,
+                    d.panel_break
+                ]
+                for d in request_data.designs
+            ])
+            logger.info(f"Fixed-span model: using span={fixed_span} inches for all designs")
+        else:
+            # Variable-span model: 7 inputs (includes span)
+            designs_array = np.array([
+                [
+                    d.loa,
+                    d.span,
+                    d.le_sweep_p1,
+                    d.le_sweep_p2,
+                    d.te_sweep_p1,
+                    d.te_sweep_p2,
+                    d.panel_break
+                ]
+                for d in request_data.designs
+            ])
 
         logger.info(f"Predicting performance for {len(designs_array)} designs")
 
         # Engineer features
         X_eng = feature_engineer.transform(designs_array)
 
-        # Predict
+        # Scale features for NN if scaler available
+        if scaler_X is not None:
+            X_scaled = scaler_X.transform(X_eng)
+        else:
+            X_scaled = None
+
+        # Predict with ensemble (pass scaled features for NN)
         predictions, uncertainty = ensemble_model.predict(
             X_eng,
+            X_scaled=X_scaled,
             return_uncertainty=True
         )
 
@@ -73,7 +102,7 @@ async def predict_performance(request_data: PredictRequest, request: Request):
             }
 
             # Add uncertainty if requested
-            if request_data.return_uncertainty:
+            if request_data.return_uncertainty and uncertainty is not None:
                 result_dict['range_nm_uncertainty'] = float(uncertainty[i, 0])
                 result_dict['endurance_hr_uncertainty'] = float(uncertainty[i, 1])
                 result_dict['mtow_lbm_uncertainty'] = float(uncertainty[i, 2])
