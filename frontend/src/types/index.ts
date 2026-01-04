@@ -67,9 +67,43 @@ export interface PredictResponse {
   model_info?: Record<string, unknown>
 }
 
+export type OptimizationDirection = 'minimize' | 'maximize'
+
+export interface OptimizationObjectives {
+  range_nm?: OptimizationDirection
+  endurance_hr?: OptimizationDirection
+  mtow_lbm?: OptimizationDirection
+  cost_usd?: OptimizationDirection
+  wingtip_deflection_in?: OptimizationDirection
+}
+
 export interface OptimizeRequest {
   constraints?: Constraints
+  objectives?: OptimizationObjectives
   population_size?: number
   n_generations?: number
   n_designs?: number
+}
+
+export interface SensitivityRequest {
+  design: DesignParameters
+  perturbation_pct?: number
+}
+
+export interface InputSensitivity {
+  input_name: string
+  base_value: number
+  perturbed_value: number
+  range_nm_delta: number
+  endurance_hr_delta: number
+  mtow_lbm_delta: number
+  cost_usd_delta: number
+  wingtip_deflection_in_delta: number
+}
+
+export interface SensitivityResponse {
+  design: DesignParameters
+  perturbation_pct: number
+  sensitivities: InputSensitivity[]
+  computation_time_ms: number
 }

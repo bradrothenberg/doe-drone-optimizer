@@ -1,135 +1,405 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { Box, Button, Slider, Typography } from '@mui/material'
-import type { Constraints } from '../../types'
+import { useState, useEffect } from 'react'
+import { Box, Button, Slider, Typography, ToggleButton, ToggleButtonGroup, Checkbox } from '@mui/material'
+import type { Constraints, OptimizationObjectives, OptimizationDirection } from '../../types'
 
 interface ConstraintFormProps {
   constraints: Constraints
-  onUpdate: (constraints: Constraints) => void
+  objectives: OptimizationObjectives
+  onUpdate: (constraints: Constraints, objectives: OptimizationObjectives) => void
   isOptimizing: boolean
+  hasResults: boolean
 }
 
-const constraintConfig = [
+// Unified metric configuration - each metric can be MIN, MAX, or LIMIT (with hard constraint)
+type MetricMode = 'minimize' | 'maximize' | 'limit'
+
+interface MetricConfig {
+  key: string
+  label: string
+  unit: string
+  defaultMode: MetricMode
+  // Constraint info when in target mode
+  constraintKey: keyof Constraints
+  constraintType: 'min' | 'max'  // Whether the target sets a min or max constraint
+  sliderMin: number
+  sliderMax: number
+  sliderStep: number
+  sliderDefault: number
+}
+
+const metricConfigs: MetricConfig[] = [
   {
-    key: 'min_range_nm' as keyof Constraints,
-    label: 'Minimum Range (nm)',
-    min: 0,
-    max: 6000,
-    step: 100,
-    default: 1500
+    key: 'range_nm',
+    label: 'Range',
+    unit: 'nm',
+    defaultMode: 'maximize',
+    constraintKey: 'min_range_nm',
+    constraintType: 'min',
+    sliderMin: 0,
+    sliderMax: 6000,
+    sliderStep: 100,
+    sliderDefault: 1500
   },
   {
-    key: 'max_cost_usd' as keyof Constraints,
-    label: 'Maximum Cost ($)',
-    min: 0,
-    max: 100000,
-    step: 1000,
-    default: 35000
+    key: 'endurance_hr',
+    label: 'Endurance',
+    unit: 'hr',
+    defaultMode: 'maximize',
+    constraintKey: 'min_endurance_hr',
+    constraintType: 'min',
+    sliderMin: 0,
+    sliderMax: 40,
+    sliderStep: 1,
+    sliderDefault: 8
   },
   {
-    key: 'max_mtow_lbm' as keyof Constraints,
-    label: 'Maximum MTOW (lbm)',
-    min: 0,
-    max: 10000,
-    step: 100,
-    default: 3000
+    key: 'mtow_lbm',
+    label: 'MTOW',
+    unit: 'lbm',
+    defaultMode: 'minimize',
+    constraintKey: 'max_mtow_lbm',
+    constraintType: 'max',
+    sliderMin: 0,
+    sliderMax: 10000,
+    sliderStep: 100,
+    sliderDefault: 3000
   },
   {
-    key: 'min_endurance_hr' as keyof Constraints,
-    label: 'Minimum Endurance (hr)',
-    min: 0,
-    max: 40,
-    step: 1,
-    default: 8
+    key: 'cost_usd',
+    label: 'Cost',
+    unit: '$',
+    defaultMode: 'minimize',
+    constraintKey: 'max_cost_usd',
+    constraintType: 'max',
+    sliderMin: 0,
+    sliderMax: 100000,
+    sliderStep: 1000,
+    sliderDefault: 35000
   },
   {
-    key: 'max_wingtip_deflection_in' as keyof Constraints,
-    label: 'Maximum Wingtip Deflection (in)',
-    min: 0,
-    max: 100,
-    step: 1,
-    default: 30
+    key: 'wingtip_deflection_in',
+    label: 'Deflection',
+    unit: 'in',
+    defaultMode: 'minimize',
+    constraintKey: 'max_wingtip_deflection_in',
+    constraintType: 'max',
+    sliderMin: 0,
+    sliderMax: 100,
+    sliderStep: 1,
+    sliderDefault: 30
   }
 ]
 
-const presets = {
+// Preset configurations with modes and enabled state
+interface PresetConfig {
+  modes: Record<string, MetricMode>
+  enabled: Record<string, boolean>
+  constraints: Constraints
+}
+
+const presets: Record<string, PresetConfig> = {
   'Long Range': {
-    min_range_nm: 2500,
-    max_cost_usd: 50000,
-    max_mtow_lbm: 5000,
-    min_endurance_hr: 15,
-    max_wingtip_deflection_in: 40
+    modes: {
+      range_nm: 'maximize',
+      endurance_hr: 'limit',
+      mtow_lbm: 'limit',
+      cost_usd: 'limit',
+      wingtip_deflection_in: 'limit'
+    },
+    enabled: {
+      range_nm: true,
+      endurance_hr: true,
+      mtow_lbm: true,
+      cost_usd: true,
+      wingtip_deflection_in: true
+    },
+    constraints: {
+      min_range_nm: undefined,
+      min_endurance_hr: 15,
+      max_mtow_lbm: 5000,
+      max_cost_usd: 50000,
+      max_wingtip_deflection_in: 40
+    }
   },
   'Low Cost': {
-    min_range_nm: 1000,
-    max_cost_usd: 25000,
-    max_mtow_lbm: 2500,
-    min_endurance_hr: 5,
-    max_wingtip_deflection_in: 25
+    modes: {
+      range_nm: 'limit',
+      endurance_hr: 'limit',
+      mtow_lbm: 'minimize',
+      cost_usd: 'minimize',
+      wingtip_deflection_in: 'limit'
+    },
+    enabled: {
+      range_nm: true,
+      endurance_hr: true,
+      mtow_lbm: true,
+      cost_usd: true,
+      wingtip_deflection_in: true
+    },
+    constraints: {
+      min_range_nm: 1000,
+      min_endurance_hr: 5,
+      max_mtow_lbm: undefined,
+      max_cost_usd: undefined,
+      max_wingtip_deflection_in: 25
+    }
   },
   'Balanced': {
-    min_range_nm: 1500,
-    max_cost_usd: 35000,
-    max_mtow_lbm: 3000,
-    min_endurance_hr: 8,
-    max_wingtip_deflection_in: 30
+    modes: {
+      range_nm: 'limit',
+      endurance_hr: 'limit',
+      mtow_lbm: 'limit',
+      cost_usd: 'limit',
+      wingtip_deflection_in: 'limit'
+    },
+    enabled: {
+      range_nm: true,
+      endurance_hr: true,
+      mtow_lbm: true,
+      cost_usd: true,
+      wingtip_deflection_in: true
+    },
+    constraints: {
+      min_range_nm: 1500,
+      min_endurance_hr: 8,
+      max_mtow_lbm: 3000,
+      max_cost_usd: 35000,
+      max_wingtip_deflection_in: 30
+    }
   }
 }
 
-const DEBOUNCE_MS = 300
+// Derive the current mode for a metric based on constraints and objectives
+function getModeForMetric(
+  config: MetricConfig,
+  constraints: Constraints,
+  objectives: OptimizationObjectives
+): MetricMode {
+  const constraintValue = constraints[config.constraintKey]
+  if (constraintValue !== undefined) {
+    return 'limit'
+  }
+  const objectiveKey = config.key as keyof OptimizationObjectives
+  return objectives[objectiveKey] || config.defaultMode as OptimizationDirection
+}
 
-export default function ConstraintForm({ constraints, onUpdate, isOptimizing }: ConstraintFormProps) {
-  // Local state for immediate slider feedback
+// Default objectives (what the backend uses if not specified)
+const defaultObjectives: OptimizationObjectives = {
+  range_nm: 'maximize',
+  endurance_hr: 'maximize',
+  mtow_lbm: 'minimize',
+  cost_usd: 'minimize',
+  wingtip_deflection_in: 'minimize'
+}
+
+export default function ConstraintForm({ constraints, objectives, onUpdate, isOptimizing, hasResults }: ConstraintFormProps) {
+  // Local state for immediate feedback
   const [localConstraints, setLocalConstraints] = useState<Constraints>(constraints)
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [localObjectives, setLocalObjectives] = useState<OptimizationObjectives>({ ...defaultObjectives, ...objectives })
+  const [localModes, setLocalModes] = useState<Record<string, MetricMode>>(() => {
+    const modes: Record<string, MetricMode> = {}
+    metricConfigs.forEach(config => {
+      modes[config.key] = getModeForMetric(config, constraints, objectives)
+    })
+    return modes
+  })
+  const [enabledMetrics, setEnabledMetrics] = useState<Record<string, boolean>>(() => {
+    const enabled: Record<string, boolean> = {}
+    metricConfigs.forEach(config => {
+      enabled[config.key] = true // All enabled by default
+    })
+    return enabled
+  })
+  const [hasChanges, setHasChanges] = useState(false)
 
-  // Sync local state when external constraints change (e.g., preset selection)
+  // Sync local state when external props change
   useEffect(() => {
     setLocalConstraints(constraints)
-  }, [constraints])
+    setLocalObjectives({ ...defaultObjectives, ...objectives })
+    const modes: Record<string, MetricMode> = {}
+    metricConfigs.forEach(config => {
+      modes[config.key] = getModeForMetric(config, constraints, objectives)
+    })
+    setLocalModes(modes)
+    setHasChanges(false)
+  }, [constraints, objectives])
 
-  // Cleanup debounce timer on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current)
+  const checkForChanges = (
+    newConstraints: Constraints,
+    newObjectives: OptimizationObjectives,
+    newModes: Record<string, MetricMode>,
+    newEnabled?: Record<string, boolean>
+  ) => {
+    // Check if anything changed from the submitted state
+    const constraintsChanged = JSON.stringify(newConstraints) !== JSON.stringify(constraints)
+    const objectivesChanged = JSON.stringify(newObjectives) !== JSON.stringify(objectives)
+    const modesChanged = metricConfigs.some(config => {
+      const originalMode = getModeForMetric(config, constraints, objectives)
+      return newModes[config.key] !== originalMode
+    })
+    const enabledChanged = newEnabled ? JSON.stringify(newEnabled) !== JSON.stringify(enabledMetrics) : false
+    setHasChanges(constraintsChanged || objectivesChanged || modesChanged || enabledChanged)
+  }
+
+  const handleEnabledChange = (metricKey: string, checked: boolean) => {
+    const newEnabled = { ...enabledMetrics, [metricKey]: checked }
+    setEnabledMetrics(newEnabled)
+
+    // If disabling, clear the constraint and objective for this metric
+    if (!checked) {
+      const config = metricConfigs.find(c => c.key === metricKey)!
+      const objectiveKey = metricKey as keyof OptimizationObjectives
+      const newConstraints = { ...localConstraints, [config.constraintKey]: undefined }
+      const newObjectives = { ...localObjectives }
+      delete newObjectives[objectiveKey]
+      setLocalConstraints(newConstraints)
+      setLocalObjectives(newObjectives)
+      checkForChanges(newConstraints, newObjectives, localModes, newEnabled)
+    } else {
+      checkForChanges(localConstraints, localObjectives, localModes, newEnabled)
+    }
+  }
+
+  const handleModeChange = (metricKey: string, newMode: MetricMode | null) => {
+    if (newMode === null) return // Don't allow deselection
+
+    const config = metricConfigs.find(c => c.key === metricKey)!
+    const objectiveKey = metricKey as keyof OptimizationObjectives
+
+    const newModes = { ...localModes, [metricKey]: newMode }
+    let newConstraints = { ...localConstraints }
+    let newObjectives = { ...localObjectives }
+
+    if (newMode === 'limit') {
+      // Set a hard constraint with the default value
+      newConstraints = {
+        ...newConstraints,
+        [config.constraintKey]: config.sliderDefault
+      }
+      // Remove from objectives (will use default direction)
+      newObjectives = { ...newObjectives }
+      delete newObjectives[objectiveKey]
+    } else {
+      // Clear the constraint
+      newConstraints = {
+        ...newConstraints,
+        [config.constraintKey]: undefined
+      }
+      // Set the objective direction
+      newObjectives = {
+        ...newObjectives,
+        [objectiveKey]: newMode as OptimizationDirection
       }
     }
-  }, [])
 
-  const debouncedUpdate = useCallback((newConstraints: Constraints) => {
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current)
-    }
-    debounceTimerRef.current = setTimeout(() => {
-      onUpdate(newConstraints)
-    }, DEBOUNCE_MS)
-  }, [onUpdate])
+    setLocalModes(newModes)
+    setLocalConstraints(newConstraints)
+    setLocalObjectives(newObjectives)
+    checkForChanges(newConstraints, newObjectives, newModes)
+  }
 
-  const handleSliderChange = (key: keyof Constraints) => (
+  const handleSliderChange = (constraintKey: keyof Constraints) => (
     _event: Event,
     value: number | number[]
   ) => {
     const newConstraints = {
       ...localConstraints,
-      [key]: value as number
+      [constraintKey]: value as number
     }
     setLocalConstraints(newConstraints)
-    debouncedUpdate(newConstraints)
+    checkForChanges(newConstraints, localObjectives, localModes)
   }
 
   const handlePreset = (presetName: keyof typeof presets) => {
-    onUpdate(presets[presetName])
+    const preset = presets[presetName]
+    setLocalConstraints(preset.constraints)
+    setLocalModes(preset.modes)
+    setEnabledMetrics(preset.enabled)
+    // Build objectives from modes (only for min/max modes on enabled metrics)
+    const newObjectives: OptimizationObjectives = {}
+    metricConfigs.forEach(config => {
+      const mode = preset.modes[config.key]
+      const isEnabled = preset.enabled[config.key]
+      if (isEnabled && mode !== 'limit') {
+        const key = config.key as keyof OptimizationObjectives
+        newObjectives[key] = mode as OptimizationDirection
+      }
+    })
+    setLocalObjectives(newObjectives)
+    checkForChanges(preset.constraints, newObjectives, preset.modes, preset.enabled)
   }
 
   const handleClear = () => {
-    onUpdate({
+    const clearedConstraints: Constraints = {
       min_range_nm: undefined,
       max_cost_usd: undefined,
       max_mtow_lbm: undefined,
       min_endurance_hr: undefined,
       max_wingtip_deflection_in: undefined
+    }
+    const defaultModes: Record<string, MetricMode> = {}
+    const allEnabled: Record<string, boolean> = {}
+    metricConfigs.forEach(config => {
+      defaultModes[config.key] = config.defaultMode
+      allEnabled[config.key] = true
     })
+    setLocalConstraints(clearedConstraints)
+    setLocalObjectives({ ...defaultObjectives })
+    setLocalModes(defaultModes)
+    setEnabledMetrics(allEnabled)
+    checkForChanges(clearedConstraints, defaultObjectives, defaultModes, allEnabled)
   }
+
+  const handleRunOptimization = () => {
+    // Only include constraints and objectives for enabled metrics
+    const filteredConstraints: Constraints = { ...localConstraints }
+    const filteredObjectives: OptimizationObjectives = { ...localObjectives }
+
+    metricConfigs.forEach(config => {
+      if (!enabledMetrics[config.key]) {
+        // Clear constraint for disabled metric
+        filteredConstraints[config.constraintKey] = undefined
+        // Clear objective for disabled metric
+        const objectiveKey = config.key as keyof OptimizationObjectives
+        delete filteredObjectives[objectiveKey]
+      }
+    })
+
+    onUpdate(filteredConstraints, filteredObjectives)
+    setHasChanges(false)
+  }
+
+  // Determine button text and style based on state
+  const getButtonConfig = () => {
+    if (isOptimizing) {
+      return {
+        text: 'OPTIMIZING...',
+        bgcolor: '#cccccc',
+        disabled: true
+      }
+    }
+    if (hasChanges) {
+      return {
+        text: 'RUN OPTIMIZATION',
+        bgcolor: '#1565c0',
+        disabled: false
+      }
+    }
+    if (hasResults) {
+      return {
+        text: 'OPTIMIZATION COMPLETE',
+        bgcolor: '#2e7d32',
+        disabled: true
+      }
+    }
+    return {
+      text: 'RUN OPTIMIZATION',
+      bgcolor: '#000000',
+      disabled: false
+    }
+  }
+
+  const buttonConfig = getButtonConfig()
 
   return (
     <Box
@@ -151,7 +421,7 @@ export default function ConstraintForm({ constraints, onUpdate, isOptimizing }: 
           pb: 1
         }}
       >
-        Optimization Constraints
+        Optimization Setup
       </Typography>
 
       {/* Preset Buttons */}
@@ -193,60 +463,164 @@ export default function ConstraintForm({ constraints, onUpdate, isOptimizing }: 
         </Button>
       </Box>
 
-      {/* Constraint Sliders */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-        {constraintConfig.map((config) => {
-          const value = localConstraints[config.key] ?? config.default
+      {/* Metric Controls */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        {metricConfigs.map((config) => {
+          const mode = localModes[config.key]
+          const constraintValue = localConstraints[config.constraintKey]
+          const showSlider = mode === 'limit'
+          const isEnabled = enabledMetrics[config.key]
+
           return (
-            <Box key={config.key}>
-              <Typography
-                sx={{
-                  fontFamily: 'monospace',
-                  fontSize: '0.85em',
-                  color: '#666666',
-                  mb: 1
-                }}
-              >
-                {config.label}
-              </Typography>
-              <Slider
-                value={value}
-                min={config.min}
-                max={config.max}
-                step={config.step}
-                onChange={handleSliderChange(config.key)}
+            <Box
+              key={config.key}
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: showSlider ? '32px 110px 200px 1fr 80px' : '32px 110px 200px 1fr',
+                gap: 2,
+                alignItems: 'center',
+                py: 0.5,
+                borderBottom: '1px solid #e0e0e0',
+                opacity: isEnabled ? 1 : 0.4,
+                bgcolor: isEnabled ? 'transparent' : '#f9f9f9'
+              }}
+            >
+              {/* Enable Checkbox */}
+              <Checkbox
+                checked={isEnabled}
+                onChange={(e) => handleEnabledChange(config.key, e.target.checked)}
                 disabled={isOptimizing}
-                valueLabelDisplay="on"
+                size="small"
                 sx={{
-                  color: '#000000',
-                  '& .MuiSlider-thumb': {
-                    bgcolor: '#000000',
-                    border: '2px solid #000000'
-                  },
-                  '& .MuiSlider-track': {
-                    bgcolor: '#000000'
-                  },
-                  '& .MuiSlider-rail': {
-                    bgcolor: '#cccccc'
-                  },
-                  '& .MuiSlider-valueLabel': {
-                    fontFamily: 'monospace',
-                    fontSize: '0.75rem',
-                    bgcolor: '#000000'
+                  p: 0,
+                  color: '#666666',
+                  '&.Mui-checked': {
+                    color: '#1565c0'
                   }
                 }}
               />
+
+              {/* Metric Label */}
               <Typography
                 sx={{
                   fontFamily: 'monospace',
                   fontSize: '0.9em',
-                  color: '#000000',
-                  fontWeight: 'bold',
-                  mt: 1
+                  color: isEnabled ? '#000000' : '#888888',
+                  fontWeight: 500
                 }}
               >
-                {value.toLocaleString()}
+                {config.label}
+                <Typography
+                  component="span"
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.8em',
+                    color: '#666666',
+                    ml: 0.5
+                  }}
+                >
+                  ({config.unit})
+                </Typography>
               </Typography>
+
+              {/* Mode Toggle */}
+              <ToggleButtonGroup
+                value={mode}
+                exclusive
+                onChange={(_, value) => handleModeChange(config.key, value)}
+                disabled={isOptimizing || !isEnabled}
+                size="small"
+                sx={{
+                  '& .MuiToggleButton-root': {
+                    fontFamily: 'monospace',
+                    fontSize: '0.75em',
+                    px: 1.5,
+                    py: 0.5,
+                    borderColor: '#cccccc',
+                    color: '#666666',
+                    '&.Mui-selected': {
+                      color: '#ffffff',
+                      '&:hover': {
+                        opacity: 0.9
+                      }
+                    },
+                    '&.Mui-selected[value="minimize"]': {
+                      bgcolor: isEnabled ? '#2196f3' : '#b0bec5',
+                    },
+                    '&.Mui-selected[value="maximize"]': {
+                      bgcolor: isEnabled ? '#4caf50' : '#b0bec5',
+                    },
+                    '&.Mui-selected[value="limit"]': {
+                      bgcolor: isEnabled ? '#ff9800' : '#b0bec5',
+                    },
+                    '&:hover': {
+                      bgcolor: '#e0e0e0'
+                    }
+                  }
+                }}
+              >
+                <ToggleButton value="minimize">MIN</ToggleButton>
+                <ToggleButton value="maximize">MAX</ToggleButton>
+                <ToggleButton value="limit">LIMIT</ToggleButton>
+              </ToggleButtonGroup>
+
+              {/* Slider (only shown in limit mode) */}
+              {showSlider ? (
+                <>
+                  <Slider
+                    value={constraintValue ?? config.sliderDefault}
+                    min={config.sliderMin}
+                    max={config.sliderMax}
+                    step={config.sliderStep}
+                    onChange={handleSliderChange(config.constraintKey)}
+                    disabled={isOptimizing || !isEnabled}
+                    valueLabelDisplay="auto"
+                    sx={{
+                      color: isEnabled ? '#ff9800' : '#bdbdbd',
+                      '& .MuiSlider-thumb': {
+                        bgcolor: isEnabled ? '#ff9800' : '#bdbdbd',
+                        border: `2px solid ${isEnabled ? '#e65100' : '#9e9e9e'}`
+                      },
+                      '& .MuiSlider-track': {
+                        bgcolor: isEnabled ? '#ff9800' : '#bdbdbd'
+                      },
+                      '& .MuiSlider-rail': {
+                        bgcolor: '#cccccc'
+                      },
+                      '& .MuiSlider-valueLabel': {
+                        fontFamily: 'monospace',
+                        fontSize: '0.75rem',
+                        bgcolor: isEnabled ? '#ff9800' : '#9e9e9e'
+                      }
+                    }}
+                  />
+                  <Typography
+                    sx={{
+                      fontFamily: 'monospace',
+                      fontSize: '0.9em',
+                      color: isEnabled ? '#000000' : '#888888',
+                      fontWeight: 'bold',
+                      textAlign: 'right'
+                    }}
+                  >
+                    {config.constraintType === 'min' ? '≥' : '≤'} {(constraintValue ?? config.sliderDefault).toLocaleString()}
+                  </Typography>
+                </>
+              ) : (
+                <Typography
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.85em',
+                    color: '#888888',
+                    fontStyle: 'italic'
+                  }}
+                >
+                  {isEnabled
+                    ? (mode === 'minimize' ? 'Find lowest possible value' : 'Find highest possible value')
+                    : 'Not included in optimization'
+                  }
+                </Typography>
+              )}
             </Box>
           )
         })}
@@ -255,27 +629,41 @@ export default function ConstraintForm({ constraints, onUpdate, isOptimizing }: 
       <Button
         variant="contained"
         fullWidth
-        disabled={isOptimizing}
-        onClick={() => onUpdate(localConstraints)}
+        disabled={buttonConfig.disabled}
+        onClick={handleRunOptimization}
         sx={{
           mt: 4,
-          bgcolor: '#000000',
+          bgcolor: buttonConfig.bgcolor,
           color: '#ffffff',
           fontFamily: 'monospace',
           fontWeight: 'bold',
           fontSize: '1.1em',
           py: 1.5,
           '&:hover': {
-            bgcolor: '#333333'
+            bgcolor: hasChanges ? '#0d47a1' : '#333333'
           },
           '&:disabled': {
-            bgcolor: '#cccccc',
-            color: '#666666'
+            bgcolor: buttonConfig.bgcolor,
+            color: '#ffffff'
           }
         }}
       >
-        {isOptimizing ? 'OPTIMIZING...' : 'RUN OPTIMIZATION'}
+        {buttonConfig.text}
       </Button>
+
+      {hasChanges && hasResults && (
+        <Typography
+          sx={{
+            fontFamily: 'monospace',
+            fontSize: '0.85em',
+            color: '#1565c0',
+            mt: 1,
+            textAlign: 'center'
+          }}
+        >
+          Settings changed - click to re-run optimization
+        </Typography>
+      )}
     </Box>
   )
 }

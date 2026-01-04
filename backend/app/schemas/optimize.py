@@ -3,7 +3,40 @@ Pydantic schemas for optimization endpoint
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Literal
+
+
+class OptimizationObjectives(BaseModel):
+    """
+    Optimization direction for each output metric.
+    'minimize' or 'maximize' for each metric.
+    If not specified, uses default directions:
+    - range_nm: maximize
+    - endurance_hr: maximize
+    - mtow_lbm: minimize
+    - cost_usd: minimize
+    - wingtip_deflection_in: minimize
+    """
+    range_nm: Optional[Literal['minimize', 'maximize']] = Field(None, description="Optimize range direction")
+    endurance_hr: Optional[Literal['minimize', 'maximize']] = Field(None, description="Optimize endurance direction")
+    mtow_lbm: Optional[Literal['minimize', 'maximize']] = Field(None, description="Optimize MTOW direction")
+    cost_usd: Optional[Literal['minimize', 'maximize']] = Field(None, description="Optimize cost direction")
+    wingtip_deflection_in: Optional[Literal['minimize', 'maximize']] = Field(None, description="Optimize deflection direction")
+
+    def to_dict(self) -> Dict[str, str]:
+        """Convert to dictionary with defaults applied"""
+        defaults = {
+            'range_nm': 'maximize',
+            'endurance_hr': 'maximize',
+            'mtow_lbm': 'minimize',
+            'cost_usd': 'minimize',
+            'wingtip_deflection_in': 'minimize'
+        }
+        result = {}
+        for key, default in defaults.items():
+            value = getattr(self, key)
+            result[key] = value if value is not None else default
+        return result
 
 
 class Constraints(BaseModel):
@@ -22,6 +55,7 @@ class Constraints(BaseModel):
 class OptimizeRequest(BaseModel):
     """Request schema for optimization endpoint"""
     constraints: Optional[Constraints] = Field(None, description="User constraints (optional)")
+    objectives: Optional[OptimizationObjectives] = Field(None, description="Optimization directions (optional)")
     population_size: int = Field(default=200, ge=50, le=500, description="NSGA-II population size")
     n_generations: int = Field(default=100, ge=20, le=200, description="Number of generations")
     n_designs: int = Field(default=50, ge=1, le=200, description="Number of Pareto designs to return")

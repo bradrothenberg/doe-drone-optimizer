@@ -54,7 +54,14 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
             if request_data.constraints.max_wingtip_deflection_in is not None:
                 constraints_dict['max_wingtip_deflection_in'] = request_data.constraints.max_wingtip_deflection_in
 
+        # Extract objectives (optimization directions)
+        objectives_dict = None
+        if request_data.objectives:
+            objectives_dict = request_data.objectives.to_dict()
+
         logger.info(f"Running optimization with constraints: {constraints_dict}")
+        if objectives_dict:
+            logger.info(f"Custom objectives: {objectives_dict}")
 
         # Validate constraints
         is_valid, errors, warnings = validate_constraints(constraints_dict)
@@ -79,6 +86,7 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                 ensemble_model=ensemble_model,
                 feature_engineer=feature_engineer,
                 user_constraints=constraints_dict if constraints_dict else None,
+                objectives=objectives_dict,
                 population_size=request_data.population_size,
                 n_generations=request_data.n_generations,
                 seed=42
@@ -106,6 +114,7 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                         ensemble_model=ensemble_model,
                         feature_engineer=feature_engineer,
                         user_constraints=relaxed_constraints,
+                        objectives=objectives_dict,
                         population_size=request_data.population_size,
                         n_generations=request_data.n_generations,
                         seed=42
