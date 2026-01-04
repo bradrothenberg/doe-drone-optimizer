@@ -10,6 +10,8 @@ interface ParetoChart2DProps {
   title: string
   xLabel: string
   yLabel: string
+  selectedIndex?: number | null
+  onSelectDesign?: (index: number) => void
 }
 
 export default function ParetoChart2D({
@@ -18,10 +20,30 @@ export default function ParetoChart2D({
   yKey,
   title,
   xLabel,
-  yLabel
+  yLabel,
+  selectedIndex,
+  onSelectDesign
 }: ParetoChart2DProps) {
-  // Sort data for line connection (ascending x)
-  const sortedData = [...data].sort((a, b) => (a[xKey] as number) - (b[xKey] as number))
+  // Sort data for line connection (ascending x) and track original indices
+  const indexedData = data.map((d, i) => ({ ...d, originalIndex: i }))
+  const sortedData = [...indexedData].sort((a, b) => (a[xKey] as number) - (b[xKey] as number))
+
+  // Create marker colors - highlight selected point
+  const markerColors = sortedData.map(d =>
+    d.originalIndex === selectedIndex ? '#1565c0' : paretoMarker.color
+  )
+  const markerSizes = sortedData.map(d =>
+    d.originalIndex === selectedIndex ? 14 : paretoMarker.size
+  )
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleClick = (event: any) => {
+    if (event.points && event.points.length > 0 && onSelectDesign) {
+      const pointIndex = event.points[0].pointIndex
+      const originalIndex = sortedData[pointIndex].originalIndex
+      onSelectDesign(originalIndex)
+    }
+  }
 
   return (
     <Box
@@ -37,13 +59,23 @@ export default function ParetoChart2D({
           fontFamily: "'IBM Plex Mono', monospace",
           fontWeight: 600,
           color: '#000000',
-          mb: 2,
+          mb: 1,
           fontSize: '1.1em',
           borderBottom: '2px solid #000000',
           pb: 1
         }}
       >
         {title} ({data.length} optimal)
+      </Typography>
+      <Typography
+        sx={{
+          fontFamily: 'monospace',
+          fontSize: '0.8em',
+          color: '#666666',
+          mb: 1
+        }}
+      >
+        Click any data point to view planform
       </Typography>
 
       <Plot
@@ -54,12 +86,17 @@ export default function ParetoChart2D({
             mode: 'markers+lines',
             type: 'scatter',
             name: 'Pareto Optimal',
-            marker: paretoMarker,
+            marker: {
+              ...paretoMarker,
+              color: markerColors,
+              size: markerSizes
+            },
             line: paretoLine,
             hovertemplate:
               `<b>Design</b><br>` +
               `${xLabel}: %{x:.0f}<br>` +
-              `${yLabel}: %{y:.0f}<extra></extra>`
+              `${yLabel}: %{y:.0f}<extra></extra>`,
+            customdata: sortedData.map(d => d.originalIndex)
           }
         ]}
         layout={{
@@ -75,10 +112,12 @@ export default function ParetoChart2D({
             title: yLabel,
             tickformat: yKey === 'cost_usd' ? ',.0f' : undefined
           },
-          showlegend: false
+          showlegend: false,
+          hovermode: 'closest'
         }}
         config={chartConfig}
         style={{ width: '100%', height: '400px' }}
+        onClick={handleClick}
       />
     </Box>
   )

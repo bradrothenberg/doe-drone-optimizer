@@ -73,3 +73,26 @@ export interface OptimizeRequest {
   n_generations?: number
   n_designs?: number
 }
+
+export interface SensitivityRequest {
+  design: DesignParameters
+  perturbation_pct?: number
+}
+
+export interface InputSensitivity {
+  input_name: string
+  base_value: number
+  perturbed_value: number
+  range_nm_delta: number
+  endurance_hr_delta: number
+  mtow_lbm_delta: number
+  cost_usd_delta: number
+  wingtip_deflection_in_delta: number
+}
+
+export interface SensitivityResponse {
+  design: DesignParameters
+  perturbation_pct: number
+  sensitivities: InputSensitivity[]
+  computation_time_ms: number
+}

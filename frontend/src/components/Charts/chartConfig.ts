@@ -21,8 +21,36 @@ export const chartLayout = {
 }
 
 export const chartConfig = {
-  displayModeBar: false,
-  responsive: true
+  displayModeBar: true,
+  displaylogo: false,
+  responsive: true,
+  modeBarButtonsToRemove: [
+    'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d',
+    'hoverClosestCartesian', 'hoverCompareCartesian', 'toggleSpikelines'
+  ] as const,
+  toImageButtonOptions: {
+    format: 'png' as const,
+    filename: 'pareto_chart',
+    height: 600,
+    width: 800,
+    scale: 2
+  }
+}
+
+export const chart3DConfig = {
+  displayModeBar: true,
+  displaylogo: false,
+  responsive: true,
+  modeBarButtonsToRemove: [
+    'hoverClosest3d'
+  ] as const,
+  toImageButtonOptions: {
+    format: 'png' as const,
+    filename: 'pareto_3d_chart',
+    height: 600,
+    width: 800,
+    scale: 2
+  }
 }
 
 export const paretoMarker = {

@@ -2,10 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { optimizeDesigns } from '../services/api'
 import type { Constraints } from '../types'
 
-export function useOptimization(constraints: Constraints) {
-  // Only run optimization if at least one constraint is set
-  const hasConstraints = Object.values(constraints).some(v => v !== undefined)
-
+export function useOptimization(constraints: Constraints, enabled: boolean) {
   return useQuery({
     queryKey: ['optimize', constraints],
     queryFn: () => optimizeDesigns({
@@ -14,7 +11,7 @@ export function useOptimization(constraints: Constraints) {
       n_generations: 100,
       n_designs: 50
     }),
-    enabled: hasConstraints,
+    enabled: enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 1
   })
