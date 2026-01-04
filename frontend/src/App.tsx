@@ -13,7 +13,8 @@ function App() {
     min_range_nm: undefined,
     max_cost_usd: undefined,
     max_mtow_lbm: undefined,
-    min_endurance_hr: undefined
+    min_endurance_hr: undefined,
+    max_wingtip_deflection_in: undefined
   })
 
   const { data, isLoading, error } = useOptimization(constraints)

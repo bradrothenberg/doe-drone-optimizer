@@ -19,24 +19,26 @@ interface DesignTableProps {
   designs: DesignResult[]
 }
 
-type SortKey = keyof DesignResult
+// Numeric keys that can be safely sorted
+type NumericSortKey = 'loa' | 'span' | 'le_sweep_p1' | 'le_sweep_p2' | 'te_sweep_p1' | 'te_sweep_p2' |
+  'panel_break' | 'range_nm' | 'endurance_hr' | 'mtow_lbm' | 'cost_usd' | 'wingtip_deflection_in'
 type SortOrder = 'asc' | 'desc'
 
 export default function DesignTable({ designs }: DesignTableProps) {
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
-  const [sortKey, setSortKey] = useState<SortKey>('range_nm')
+  const [sortKey, setSortKey] = useState<NumericSortKey>('range_nm')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
 
-  const handleSort = (key: SortKey) => {
+  const handleSort = (key: NumericSortKey) => {
     const isAsc = sortKey === key && sortOrder === 'asc'
     setSortOrder(isAsc ? 'desc' : 'asc')
     setSortKey(key)
   }
 
   const sortedDesigns = [...designs].sort((a, b) => {
-    const aVal = a[sortKey] as number
-    const bVal = b[sortKey] as number
+    const aVal = a[sortKey]
+    const bVal = b[sortKey]
     return sortOrder === 'asc' ? aVal - bVal : bVal - aVal
   })
 
@@ -132,7 +134,7 @@ export default function DesignTable({ designs }: DesignTableProps) {
                   <TableSortLabel
                     active={sortKey === key}
                     direction={sortKey === key ? sortOrder : 'asc'}
-                    onClick={() => handleSort(key as SortKey)}
+                    onClick={() => handleSort(key as NumericSortKey)}
                   >
                     {label}
                   </TableSortLabel>

@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Box, Button, Slider, Typography } from '@mui/material'
 import type { Constraints } from '../../types'
 
@@ -74,15 +75,46 @@ const presets = {
   }
 }
 
+const DEBOUNCE_MS = 300
+
 export default function ConstraintForm({ constraints, onUpdate, isOptimizing }: ConstraintFormProps) {
+  // Local state for immediate slider feedback
+  const [localConstraints, setLocalConstraints] = useState<Constraints>(constraints)
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Sync local state when external constraints change (e.g., preset selection)
+  useEffect(() => {
+    setLocalConstraints(constraints)
+  }, [constraints])
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
+    }
+  }, [])
+
+  const debouncedUpdate = useCallback((newConstraints: Constraints) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      onUpdate(newConstraints)
+    }, DEBOUNCE_MS)
+  }, [onUpdate])
+
   const handleSliderChange = (key: keyof Constraints) => (
     _event: Event,
     value: number | number[]
   ) => {
-    onUpdate({
-      ...constraints,
+    const newConstraints = {
+      ...localConstraints,
       [key]: value as number
-    })
+    }
+    setLocalConstraints(newConstraints)
+    debouncedUpdate(newConstraints)
   }
 
   const handlePreset = (presetName: keyof typeof presets) => {
@@ -94,7 +126,8 @@ export default function ConstraintForm({ constraints, onUpdate, isOptimizing }: 
       min_range_nm: undefined,
       max_cost_usd: undefined,
       max_mtow_lbm: undefined,
-      min_endurance_hr: undefined
+      min_endurance_hr: undefined,
+      max_wingtip_deflection_in: undefined
     })
   }
 
@@ -163,7 +196,7 @@ export default function ConstraintForm({ constraints, onUpdate, isOptimizing }: 
       {/* Constraint Sliders */}
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
         {constraintConfig.map((config) => {
-          const value = constraints[config.key] ?? config.default
+          const value = localConstraints[config.key] ?? config.default
           return (
             <Box key={config.key}>
               <Typography
@@ -223,7 +256,7 @@ export default function ConstraintForm({ constraints, onUpdate, isOptimizing }: 
         variant="contained"
         fullWidth
         disabled={isOptimizing}
-        onClick={() => onUpdate(constraints)}
+        onClick={() => onUpdate(localConstraints)}
         sx={{
           mt: 4,
           bgcolor: '#000000',
