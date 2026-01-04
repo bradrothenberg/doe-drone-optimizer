@@ -3,8 +3,193 @@ import { Box, Typography, IconButton, Tabs, Tab } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import Plot from 'react-plotly.js'
 import type { DesignResult } from '../../types'
-import Planform from '../Visualization/Planform'
 import SensitivityChart from '../Charts/SensitivityChart'
+
+/**
+ * PlanformOverlay - Renders multiple wing planforms overlaid on the same SVG
+ * for side-by-side shape comparison
+ */
+interface PlanformOverlayProps {
+  designs: DesignResult[]
+  colors: string[]
+  width?: number
+  height?: number
+}
+
+function PlanformOverlay({ designs, colors, width = 400, height = 300 }: PlanformOverlayProps) {
+  // SVG viewBox dimensions
+  const viewWidth = 500
+  const viewHeight = 450
+  const padding = 40
+  const centerX = viewWidth / 2
+  const centerY = viewHeight / 2
+
+  // Find the largest span and LOA to scale all designs to the same reference
+  const maxSpan = Math.max(...designs.map(d => d.span))
+  const maxLoa = Math.max(...designs.map(d => d.loa))
+
+  // Available drawing area
+  const drawWidth = viewWidth - 2 * padding
+  const drawHeight = viewHeight - 2 * padding
+
+  // Global scale based on largest design
+  const scaleX = drawWidth / maxSpan
+  const scaleY = drawHeight / maxLoa
+  const globalScale = Math.min(scaleX, scaleY) * 0.9
+
+  // Generate wing outline for a single design
+  const getWingPath = (design: DesignResult, scale: number) => {
+    const { loa, span, le_sweep_p1, le_sweep_p2, te_sweep_p1, te_sweep_p2, panel_break } = design
+
+    const halfSpan = span / 2
+    const breakSpan = halfSpan * panel_break
+    const remainingSpan = halfSpan - breakSpan
+
+    // Convert sweep angles to Y offsets
+    const leOffset1 = Math.tan((le_sweep_p1 * Math.PI) / 180) * breakSpan * scale
+    const leOffset2 = leOffset1 + Math.tan((le_sweep_p2 * Math.PI) / 180) * remainingSpan * scale
+    let teOffset1 = Math.tan((te_sweep_p1 * Math.PI) / 180) * breakSpan * scale
+    let teOffset2 = teOffset1 + Math.tan((te_sweep_p2 * Math.PI) / 180) * remainingSpan * scale
+
+    const loaScaled = loa * scale
+    const noseY = centerY - loaScaled / 2
+
+    // Apply 2" gap constraint to prevent bowtie
+    const MIN_GAP = 2.0
+    const breakLEY = noseY + leOffset1
+    const breakTEY = noseY + loaScaled - teOffset1
+    if (breakTEY - breakLEY < MIN_GAP * scale) {
+      teOffset1 = loaScaled - leOffset1 - MIN_GAP * scale
+      teOffset2 = teOffset1 + Math.tan((te_sweep_p2 * Math.PI) / 180) * remainingSpan * scale
+    }
+
+    const tipLEY = noseY + leOffset2
+    const tipTEY = noseY + loaScaled - teOffset2
+    if (tipTEY - tipLEY < MIN_GAP * scale) {
+      teOffset2 = loaScaled - leOffset2 - MIN_GAP * scale
+    }
+
+    const scaledBreakSpan = breakSpan * scale
+    const scaledHalfSpan = halfSpan * scale
+
+    // Build path for both wings
+    const rightPoints = [
+      `${centerX},${noseY}`,
+      `${centerX + scaledBreakSpan},${noseY + leOffset1}`,
+      `${centerX + scaledHalfSpan},${noseY + leOffset2}`,
+      `${centerX + scaledHalfSpan},${noseY + loaScaled - teOffset2}`,
+      `${centerX + scaledBreakSpan},${noseY + loaScaled - teOffset1}`,
+      `${centerX},${noseY + loaScaled}`
+    ].join(' ')
+
+    const leftPoints = [
+      `${centerX},${noseY}`,
+      `${centerX - scaledBreakSpan},${noseY + leOffset1}`,
+      `${centerX - scaledHalfSpan},${noseY + leOffset2}`,
+      `${centerX - scaledHalfSpan},${noseY + loaScaled - teOffset2}`,
+      `${centerX - scaledBreakSpan},${noseY + loaScaled - teOffset1}`,
+      `${centerX},${noseY + loaScaled}`
+    ].join(' ')
+
+    return { rightPoints, leftPoints }
+  }
+
+  return (
+    <Box
+      sx={{
+        bgcolor: '#f9f9f9',
+        border: '1px solid #cccccc',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center'
+      }}
+    >
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${viewWidth} ${viewHeight}`}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ background: '#f9f9f9' }}
+      >
+        {/* Grid lines */}
+        <line
+          x1={padding}
+          y1={centerY}
+          x2={viewWidth - padding}
+          y2={centerY}
+          stroke="#cccccc"
+          strokeWidth="1"
+          strokeDasharray="5,5"
+        />
+        <line
+          x1={centerX}
+          y1={padding}
+          x2={centerX}
+          y2={viewHeight - padding}
+          stroke="#cccccc"
+          strokeWidth="1"
+          strokeDasharray="5,5"
+        />
+
+        {/* Render each design's planform */}
+        {designs.map((design, idx) => {
+          const { rightPoints, leftPoints } = getWingPath(design, globalScale)
+          const color = colors[idx]
+
+          return (
+            <g key={idx}>
+              <polygon
+                points={rightPoints}
+                fill="none"
+                stroke={color}
+                strokeWidth="2.5"
+                strokeOpacity={0.9}
+              />
+              <polygon
+                points={leftPoints}
+                fill="none"
+                stroke={color}
+                strokeWidth="2.5"
+                strokeOpacity={0.9}
+              />
+            </g>
+          )
+        })}
+
+        {/* Centerline */}
+        <line
+          x1={centerX}
+          y1={centerY - (maxLoa * globalScale) / 2}
+          x2={centerX}
+          y2={centerY + (maxLoa * globalScale) / 2}
+          stroke="#666666"
+          strokeWidth="1"
+          strokeDasharray="3,3"
+        />
+
+        {/* Axis labels */}
+        <text
+          x={viewWidth - padding + 5}
+          y={centerY + 4}
+          fill="#666666"
+          fontFamily="Courier New"
+          fontSize="10"
+        >
+          +Y
+        </text>
+        <text
+          x={centerX + 5}
+          y={padding - 5}
+          fill="#666666"
+          fontFamily="Courier New"
+          fontSize="10"
+        >
+          +X
+        </text>
+      </svg>
+    </Box>
+  )
+}
 
 interface DesignComparisonProps {
   designs: DesignResult[]
@@ -147,7 +332,7 @@ export default function DesignComparison({ designs, onRemove, onClear }: DesignC
           />
         </Box>
 
-        {/* Planform Comparison */}
+        {/* Planform Overlay Comparison */}
         <Box>
           <Typography
             sx={{
@@ -159,20 +344,13 @@ export default function DesignComparison({ designs, onRemove, onClear }: DesignC
           >
             Planform Overlay
           </Typography>
-          <Box sx={{ position: 'relative', height: '300px', bgcolor: '#ffffff', border: '1px solid #cccccc' }}>
-            {designs.map((design, idx) => (
-              <Box
-                key={idx}
-                sx={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  opacity: 0.7
-                }}
-              >
-                <Planform design={design} width={400} height={300} color={COLORS[idx]} showLabels={false} />
+          <PlanformOverlay designs={designs} colors={COLORS} width={400} height={300} />
+          {/* Legend */}
+          <Box sx={{ display: 'flex', gap: 2, mt: 1, justifyContent: 'center' }}>
+            {designs.map((_, idx) => (
+              <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Box sx={{ width: 16, height: 3, bgcolor: COLORS[idx] }} />
+                <Typography sx={{ fontFamily: 'monospace', fontSize: '0.75em' }}>Design {idx + 1}</Typography>
               </Box>
             ))}
           </Box>
