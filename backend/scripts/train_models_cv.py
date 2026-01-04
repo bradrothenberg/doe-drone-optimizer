@@ -25,6 +25,7 @@ from sklearn.preprocessing import RobustScaler
 
 from app.models.data_loader import DOEDataLoader
 from app.models.xgboost_model import XGBoostDroneModel, train_xgboost_model
+from app.models.neural_model import train_neural_network_model
 from app.models.feature_engineering import FixedSpanFeatureEngineer
 
 logging.basicConfig(
@@ -382,15 +383,46 @@ def main(data_path: str = None):
     primary_metrics = primary_model.evaluate(X_test_eng, y_test, output_names)
 
     # ========================================
+    # 4.5 TRAIN NEURAL NETWORK (for ensemble compatibility)
+    # ========================================
+    logger.info("\n[4.5/6] Training Neural Network...")
+
+    # Scale features for NN
+    scaler = RobustScaler()
+    X_train_scaled = scaler.fit_transform(X_train_eng)
+    X_val_scaled = scaler.transform(X_val_eng)
+    X_test_scaled = scaler.transform(X_test_eng)
+
+    nn_model, nn_val_metrics = train_neural_network_model(
+        X_train_scaled, y_train,
+        X_val_scaled, y_val,
+        input_dim=X_train_scaled.shape[1],
+        hidden_dims=[48, 24, 12],
+        output_dim=y_train.shape[1],
+        dropout_rate=0.15,
+        learning_rate=0.001,
+        weight_decay=1e-4,
+        batch_size=32,
+        epochs=300,
+        early_stopping_patience=30
+    )
+
+    nn_test_metrics = nn_model.evaluate(X_test_scaled, y_test, output_names)
+    logger.info(f"\nNeural Network Test R²: {nn_test_metrics['overall']['r2']:.4f}")
+
+    # ========================================
     # 5. SAVE MODELS AND RESULTS
     # ========================================
-    logger.info("\n[5/5] Saving models and results...")
+    logger.info("\n[5/6] Saving models and results...")
 
     models_dir = Path(__file__).parent.parent / "data" / "models_fixed_span_12ft"
     models_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save primary model
+    # Save primary XGBoost model
     primary_model.save(models_dir / "xgboost_v1.pkl")
+
+    # Save Neural Network model
+    nn_model.save(models_dir / "neural_v1.pt")
 
     # Save bootstrap ensemble
     bootstrap_ensemble.save(models_dir)
@@ -399,9 +431,7 @@ def main(data_path: str = None):
     import joblib
     joblib.dump(engineer, models_dir / "feature_engineer.pkl")
 
-    # Save scaler (for potential NN use)
-    scaler = RobustScaler()
-    X_train_scaled = scaler.fit_transform(X_train_eng)
+    # Save scaler (already fitted above for NN)
     joblib.dump(scaler, models_dir / "scaler_X_engineered.pkl")
 
     # Save comprehensive results

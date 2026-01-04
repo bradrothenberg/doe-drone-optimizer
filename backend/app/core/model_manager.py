@@ -107,7 +107,9 @@ class ModelManager:
                 for model_file in metadata['model_files']:
                     model_path = models_dir / model_file
                     if model_path.exists():
-                        model = XGBoostDroneModel.load(model_path)
+                        # Create instance and call load method
+                        model = XGBoostDroneModel()
+                        model.load(model_path)
                         self.bootstrap_models.append(model)
 
                 logger.info(f"Loaded bootstrap ensemble with {len(self.bootstrap_models)} models")
