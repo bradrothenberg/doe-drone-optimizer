@@ -31,8 +31,9 @@ Dockerfile
 
 # Local development
 *.log
-.env.local
-.env.development
+.env
+.env.*
+!.env.example
 
 # Temporary files
 tmp/
