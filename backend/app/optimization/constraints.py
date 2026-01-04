@@ -347,7 +347,7 @@ def validate_constraints(constraints: Dict[str, float]) -> Tuple[bool, List[str]
     warnings = []
 
     # Check constraint names
-    valid_names = {'min_range_nm', 'max_cost_usd', 'max_mtow_lbm', 'min_endurance_hr'}
+    valid_names = {'min_range_nm', 'max_cost_usd', 'max_mtow_lbm', 'min_endurance_hr', 'max_wingtip_deflection_in'}
     for name in constraints.keys():
         if name not in valid_names:
             errors.append(f"Unknown constraint: {name}")
@@ -376,6 +376,12 @@ def validate_constraints(constraints: Dict[str, float]) -> Tuple[bool, List[str]
             errors.append("min_endurance_hr must be positive")
         if constraints['min_endurance_hr'] > 40:
             errors.append("min_endurance_hr exceeds typical dataset range (0-40 hr)")
+
+    if 'max_wingtip_deflection_in' in constraints:
+        if constraints['max_wingtip_deflection_in'] <= 0:
+            errors.append("max_wingtip_deflection_in must be positive")
+        if constraints['max_wingtip_deflection_in'] > 100:
+            warnings.append("max_wingtip_deflection_in exceeds typical range (data capped at 100 in)")
 
     # Check for conflicting constraints (warnings only, don't fail validation)
     if 'min_range_nm' in constraints and 'max_cost_usd' in constraints:

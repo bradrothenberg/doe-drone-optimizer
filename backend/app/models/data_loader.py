@@ -31,10 +31,11 @@ class DOEDataLoader:
     ]
 
     PRIMARY_OUTPUTS = [
-        'range_nm',             # Range in nautical miles
-        'endurance_hr',         # Endurance in hours
-        'mtow_lbm',             # Max Takeoff Weight in pounds
-        'material_cost_usd'     # Material cost in USD
+        'range_nm',                  # Range in nautical miles
+        'endurance_hr',              # Endurance in hours
+        'mtow_lbm',                  # Max Takeoff Weight in pounds
+        'material_cost_usd',         # Material cost in USD
+        'wingtip_deflection_in'      # Wingtip deflection in inches
     ]
 
     ADDITIONAL_OUTPUTS = [
@@ -45,6 +46,9 @@ class DOEDataLoader:
         'static_margin_pct',
         'wingtip_deflection_in'
     ]
+
+    # Maximum reasonable wingtip deflection (inches) - values above this are likely failed simulations
+    MAX_WINGTIP_DEFLECTION = 100.0
 
     def __init__(self, data_path: str = None):
         """
@@ -108,6 +112,14 @@ class DOEDataLoader:
 
         logger.info(f"Removed {n_removed} infeasible designs (range <= 0)")
         logger.info(f"Remaining samples: {len(self.df_clean)}")
+
+        # Clamp extreme wingtip deflection values (likely failed simulations)
+        # Data shows median=0.01", 99th percentile=3.55", but outliers up to 1.5M inches
+        if 'wingtip_deflection_in' in self.df_clean.columns:
+            n_extreme = (self.df_clean['wingtip_deflection_in'] > self.MAX_WINGTIP_DEFLECTION).sum()
+            if n_extreme > 0:
+                logger.info(f"Clamping {n_extreme} extreme wingtip deflection values (>{self.MAX_WINGTIP_DEFLECTION} in) to {self.MAX_WINGTIP_DEFLECTION} in")
+                self.df_clean['wingtip_deflection_in'] = self.df_clean['wingtip_deflection_in'].clip(upper=self.MAX_WINGTIP_DEFLECTION)
 
         # Check for missing values
         missing = self.df_clean[self.INPUT_FEATURES + self.PRIMARY_OUTPUTS].isnull().sum()

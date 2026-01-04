@@ -120,7 +120,7 @@ def main():
         X_val_scaled, y_val_scaled,
         input_dim=X_train_scaled.shape[1],
         hidden_dims=[128, 64, 32],
-        output_dim=4,
+        output_dim=y_train_scaled.shape[1],  # Dynamic: 5 outputs now
         dropout_rate=0.2,
         learning_rate=0.001,
         weight_decay=1e-4,
@@ -225,9 +225,24 @@ def main():
         'feature_importance': importance
     }
 
+    # Convert numpy types to native Python types for JSON serialization
+    def convert_to_native(obj):
+        if isinstance(obj, dict):
+            return {k: convert_to_native(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_to_native(i) for i in obj]
+        elif isinstance(obj, (np.floating, np.float32, np.float64)):
+            return float(obj)
+        elif isinstance(obj, (np.integer, np.int32, np.int64)):
+            return int(obj)
+        elif isinstance(obj, np.ndarray):
+            return convert_to_native(obj.tolist())
+        else:
+            return obj
+
     results_path = models_dir / "training_results.json"
     with open(results_path, 'w') as f:
-        json.dump(results, f, indent=2)
+        json.dump(convert_to_native(results), f, indent=2)
 
     logger.info(f"Saved training results to {results_path}")
 

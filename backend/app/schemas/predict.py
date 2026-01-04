@@ -50,12 +50,14 @@ class PredictionResult(BaseModel):
     endurance_hr: float = Field(..., description="Predicted endurance (hours)")
     mtow_lbm: float = Field(..., description="Predicted MTOW (lbm)")
     cost_usd: float = Field(..., description="Predicted material cost (USD)")
+    wingtip_deflection_in: float = Field(..., description="Predicted wingtip deflection (inches)")
 
     # Optional uncertainty estimates
     range_nm_uncertainty: Optional[float] = Field(None, description="Range uncertainty (std dev)")
     endurance_hr_uncertainty: Optional[float] = Field(None, description="Endurance uncertainty (std dev)")
     mtow_lbm_uncertainty: Optional[float] = Field(None, description="MTOW uncertainty (std dev)")
     cost_usd_uncertainty: Optional[float] = Field(None, description="Cost uncertainty (std dev)")
+    wingtip_deflection_in_uncertainty: Optional[float] = Field(None, description="Wingtip deflection uncertainty (std dev)")
 
 
 class PredictResponse(BaseModel):

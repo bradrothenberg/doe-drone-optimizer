@@ -51,6 +51,8 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                 constraints_dict['max_mtow_lbm'] = request_data.constraints.max_mtow_lbm
             if request_data.constraints.min_endurance_hr is not None:
                 constraints_dict['min_endurance_hr'] = request_data.constraints.min_endurance_hr
+            if request_data.constraints.max_wingtip_deflection_in is not None:
+                constraints_dict['max_wingtip_deflection_in'] = request_data.constraints.max_wingtip_deflection_in
 
         logger.info(f"Running optimization with constraints: {constraints_dict}")
 
@@ -147,7 +149,8 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                 pareto_objectives['range_nm'],
                 pareto_objectives['endurance_hr'],
                 pareto_objectives['mtow_lbm'],
-                pareto_objectives['cost_usd']
+                pareto_objectives['cost_usd'],
+                pareto_objectives['wingtip_deflection_in']
             ])
 
             selected_designs, selected_obj, selected_idx = select_diverse_subset(
@@ -165,13 +168,15 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                 'range_nm': selected_obj[:, 0],
                 'endurance_hr': selected_obj[:, 1],
                 'mtow_lbm': selected_obj[:, 2],
-                'cost_usd': selected_obj[:, 3]
+                'cost_usd': selected_obj[:, 3],
+                'wingtip_deflection_in': selected_obj[:, 4]
             }
             uncertainty = {
                 'range_nm': uncertainty['range_nm'][selected_idx],
                 'endurance_hr': uncertainty['endurance_hr'][selected_idx],
                 'mtow_lbm': uncertainty['mtow_lbm'][selected_idx],
-                'cost_usd': uncertainty['cost_usd'][selected_idx]
+                'cost_usd': uncertainty['cost_usd'][selected_idx],
+                'wingtip_deflection_in': uncertainty['wingtip_deflection_in'][selected_idx]
             }
 
         # Build response
@@ -190,10 +195,12 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                 endurance_hr=float(pareto_objectives['endurance_hr'][i]),
                 mtow_lbm=float(pareto_objectives['mtow_lbm'][i]),
                 cost_usd=float(pareto_objectives['cost_usd'][i]),
+                wingtip_deflection_in=float(pareto_objectives['wingtip_deflection_in'][i]),
                 uncertainty_range_nm=float(uncertainty['range_nm'][i]),
                 uncertainty_endurance_hr=float(uncertainty['endurance_hr'][i]),
                 uncertainty_mtow_lbm=float(uncertainty['mtow_lbm'][i]),
-                uncertainty_cost_usd=float(uncertainty['cost_usd'][i])
+                uncertainty_cost_usd=float(uncertainty['cost_usd'][i]),
+                uncertainty_wingtip_deflection_in=float(uncertainty['wingtip_deflection_in'][i])
             )
             design_results.append(design_result)
 

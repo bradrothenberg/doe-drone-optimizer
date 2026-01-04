@@ -12,6 +12,7 @@ class Constraints(BaseModel):
     max_cost_usd: Optional[float] = Field(None, ge=0, le=200000, description="Maximum cost ($)")
     max_mtow_lbm: Optional[float] = Field(None, ge=0, le=20000, description="Maximum MTOW (lbm)")
     min_endurance_hr: Optional[float] = Field(None, ge=0, le=100, description="Minimum endurance (hr)")
+    max_wingtip_deflection_in: Optional[float] = Field(None, ge=0, le=2000, description="Maximum wingtip deflection (in)")
 
     def to_dict(self) -> Dict[str, float]:
         """Convert to dictionary, excluding None values"""
@@ -57,12 +58,14 @@ class DesignResult(BaseModel):
     endurance_hr: float = Field(..., description="Endurance (hours)")
     mtow_lbm: float = Field(..., description="Max Takeoff Weight (lbm)")
     cost_usd: float = Field(..., description="Material Cost (USD)")
+    wingtip_deflection_in: float = Field(..., description="Wingtip Deflection (inches)")
 
     # Uncertainty estimates
     uncertainty_range_nm: float = Field(..., description="Range uncertainty (nm)")
     uncertainty_endurance_hr: float = Field(..., description="Endurance uncertainty (hr)")
     uncertainty_mtow_lbm: float = Field(..., description="MTOW uncertainty (lbm)")
     uncertainty_cost_usd: float = Field(..., description="Cost uncertainty (USD)")
+    uncertainty_wingtip_deflection_in: float = Field(..., description="Wingtip deflection uncertainty (in)")
 
 
 class OptimizeResponse(BaseModel):

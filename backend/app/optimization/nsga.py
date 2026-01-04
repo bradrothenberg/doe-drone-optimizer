@@ -31,11 +31,12 @@ class DroneDesignProblem(Problem):
     - TE Sweep P2: -60-60 degrees
     - Panel Break: 0.10-0.65 (fraction of span)
 
-    Objectives (4):
+    Objectives (5):
     - Maximize Range (nm)
     - Maximize Endurance (hr)
     - Minimize MTOW (lbm)
     - Minimize Material Cost ($)
+    - Minimize Wingtip Deflection (in)
     """
 
     def __init__(
@@ -62,7 +63,7 @@ class DroneDesignProblem(Problem):
 
         super().__init__(
             n_var=7,        # 7 design variables
-            n_obj=4,        # 4 objectives
+            n_obj=5,        # 5 objectives
             n_constr=0,     # No hard constraints (using penalty method)
             xl=xl,
             xu=xu
@@ -90,6 +91,7 @@ class DroneDesignProblem(Problem):
         endurance_hr = predictions[:, 1]
         mtow_lbm = predictions[:, 2]
         cost_usd = predictions[:, 3]
+        wingtip_deflection_in = predictions[:, 4]
 
         # Apply user constraints as penalties
         penalty = np.zeros(len(X))
@@ -114,12 +116,18 @@ class DroneDesignProblem(Problem):
             violation = np.maximum(0, min_endurance - endurance_hr)
             penalty += violation * 100
 
+        if 'max_wingtip_deflection_in' in self.user_constraints:
+            max_deflection = self.user_constraints['max_wingtip_deflection_in']
+            violation = np.maximum(0, wingtip_deflection_in - max_deflection)
+            penalty += violation * 10.0  # Penalty for excessive deflection
+
         # Objectives (minimize negative for maximization)
         objectives = np.column_stack([
-            -range_nm + penalty,      # Maximize range
-            -endurance_hr + penalty,  # Maximize endurance
-            mtow_lbm + penalty,       # Minimize MTOW
-            cost_usd + penalty        # Minimize cost
+            -range_nm + penalty,               # Maximize range
+            -endurance_hr + penalty,           # Maximize endurance
+            mtow_lbm + penalty,                # Minimize MTOW
+            cost_usd + penalty,                # Minimize cost
+            wingtip_deflection_in + penalty    # Minimize deflection
         ])
 
         out["F"] = objectives
@@ -195,7 +203,7 @@ def run_nsga2_optimization(
 
     # Extract results
     pareto_designs = res.X  # Design parameters (n_pareto, 7)
-    pareto_objectives = res.F  # Objectives (n_pareto, 4) - includes penalties
+    pareto_objectives = res.F  # Objectives (n_pareto, 5) - includes penalties
 
     # Get clean predictions with uncertainty (without penalties)
     # This is critical: pareto_objectives contains penalty terms which corrupt the values
@@ -207,6 +215,7 @@ def run_nsga2_optimization(
     endurance_hr = predictions[:, 1]
     mtow_lbm = predictions[:, 2]
     cost_usd = predictions[:, 3]
+    wingtip_deflection_in = predictions[:, 4]
 
     # Package results
     results = {
@@ -215,13 +224,15 @@ def run_nsga2_optimization(
             'range_nm': range_nm,
             'endurance_hr': endurance_hr,
             'mtow_lbm': mtow_lbm,
-            'cost_usd': cost_usd
+            'cost_usd': cost_usd,
+            'wingtip_deflection_in': wingtip_deflection_in
         },
         'uncertainty': {
             'range_nm': uncertainty[:, 0],
             'endurance_hr': uncertainty[:, 1],
             'mtow_lbm': uncertainty[:, 2],
-            'cost_usd': uncertainty[:, 3]
+            'cost_usd': uncertainty[:, 3],
+            'wingtip_deflection_in': uncertainty[:, 4]
         },
         'n_generations': res.algorithm.n_gen,
         'n_pareto': len(pareto_designs),
@@ -250,6 +261,7 @@ def optimize_with_constraints(
             - max_cost_usd: Maximum cost ($)
             - max_mtow_lbm: Maximum MTOW (lbm)
             - min_endurance_hr: Minimum endurance (hr)
+            - max_wingtip_deflection_in: Maximum wingtip deflection (in)
         population_size: Population size
         n_generations: Number of generations
 
@@ -286,6 +298,10 @@ def optimize_with_constraints(
 
         if 'min_endurance_hr' in constraints:
             if results['pareto_objectives']['endurance_hr'][i] < constraints['min_endurance_hr']:
+                feasible = False
+
+        if 'max_wingtip_deflection_in' in constraints:
+            if results['pareto_objectives']['wingtip_deflection_in'][i] > constraints['max_wingtip_deflection_in']:
                 feasible = False
 
         if feasible:

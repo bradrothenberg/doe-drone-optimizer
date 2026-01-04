@@ -1,0 +1,28 @@
+/* Global styles matching DOE report */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Courier New', 'Consolas', 'Monaco', monospace;
+  background: #ffffff;
+  color: #000000;
+  min-height: 100vh;
+  line-height: 1.4;
+  padding: 20px;
+}
+
+#root {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Reset MUI to use monospace */
+.MuiTypography-root,
+.MuiButton-root,
+.MuiInputBase-root,
+.MuiSlider-root {
+  font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+}

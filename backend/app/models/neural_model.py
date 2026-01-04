@@ -26,14 +26,14 @@ class DroneMLPModel(nn.Module):
     Input (17) → Dense(128) → ReLU → BatchNorm → Dropout(0.2)
               → Dense(64)  → ReLU → BatchNorm → Dropout(0.2)
               → Dense(32)  → ReLU → BatchNorm
-              → Dense(4)   → Output
+              → Dense(5)   → Output
     """
 
     def __init__(
         self,
         input_dim: int = 17,
         hidden_dims: list = [128, 64, 32],
-        output_dim: int = 4,
+        output_dim: int = 5,
         dropout_rate: float = 0.2
     ):
         """
@@ -85,7 +85,7 @@ class NeuralNetworkDroneModel:
         self,
         input_dim: int = 17,
         hidden_dims: list = [128, 64, 32],
-        output_dim: int = 4,
+        output_dim: int = 5,
         dropout_rate: float = 0.2,
         learning_rate: float = 0.001,
         weight_decay: float = 1e-4,
