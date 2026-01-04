@@ -2,15 +2,19 @@
 Model Manager for loading and caching ML models
 Provides singleton access to ensemble model and feature engineer
 Supports both variable-span (7 inputs) and fixed-span (6 inputs) models
+Supports bootstrap ensemble for uncertainty quantification
 """
 
 import joblib
+import json
 from pathlib import Path
 import logging
-from typing import Optional, Union
+from typing import Optional, Union, List
+import numpy as np
 
 from app.models.ensemble import EnsembleDroneModel
 from app.models.feature_engineering import FeatureEngineer
+from app.models.xgboost_model import XGBoostDroneModel
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -24,6 +28,8 @@ class ModelManager:
     Supports two model types:
     - Fixed-span (12ft): 6 inputs, span is constant at 144"
     - Variable-span: 7 inputs including span
+
+    Supports bootstrap ensemble for robust uncertainty quantification
     """
 
     def __init__(self):
@@ -32,6 +38,7 @@ class ModelManager:
         self.scaler_X = None  # Feature scaler for NN
         self.is_loaded = False
         self.fixed_span: Optional[float] = None  # Set if using fixed-span model
+        self.bootstrap_models: Optional[List[XGBoostDroneModel]] = None  # Bootstrap ensemble
 
     def load_models(self, models_dir: Path) -> None:
         """
@@ -52,11 +59,11 @@ class ModelManager:
 
         if is_fixed_span:
             self.fixed_span = settings.fixed_span_inches or 144.0
-            input_dim = 16  # 6 raw + 10 engineered for fixed-span
+            input_dim = 21  # 6 raw + 15 engineered (including structural features) for fixed-span
             logger.info(f"Loading FIXED-SPAN model (span={self.fixed_span} inches)")
         else:
             self.fixed_span = None
-            input_dim = 17  # 7 raw + 10 engineered for variable-span
+            input_dim = 22  # 7 raw + 15 engineered (including structural features) for variable-span
             logger.info("Loading VARIABLE-SPAN model")
 
         # Load ensemble model
@@ -81,8 +88,67 @@ class ModelManager:
             self.scaler_X = None
             logger.warning("No feature scaler found - NN predictions may be affected")
 
+        # Load bootstrap ensemble if available (for robust uncertainty)
+        self._load_bootstrap_ensemble(models_dir)
+
         self.is_loaded = True
         logger.info("All models loaded successfully")
+
+    def _load_bootstrap_ensemble(self, models_dir: Path) -> None:
+        """Load bootstrap ensemble models if available"""
+        bootstrap_metadata_path = models_dir / "bootstrap_ensemble_metadata.json"
+
+        if bootstrap_metadata_path.exists():
+            try:
+                with open(bootstrap_metadata_path, 'r') as f:
+                    metadata = json.load(f)
+
+                self.bootstrap_models = []
+                for model_file in metadata['model_files']:
+                    model_path = models_dir / model_file
+                    if model_path.exists():
+                        model = XGBoostDroneModel.load(model_path)
+                        self.bootstrap_models.append(model)
+
+                logger.info(f"Loaded bootstrap ensemble with {len(self.bootstrap_models)} models")
+            except Exception as e:
+                logger.warning(f"Failed to load bootstrap ensemble: {e}")
+                self.bootstrap_models = None
+        else:
+            logger.info("No bootstrap ensemble found - using single model for uncertainty")
+            self.bootstrap_models = None
+
+    def predict_with_bootstrap_uncertainty(self, X: np.ndarray) -> tuple:
+        """
+        Predict using bootstrap ensemble for uncertainty quantification
+
+        Args:
+            X: Engineered features (n_samples, n_features)
+
+        Returns:
+            Tuple of (mean_predictions, uncertainty_std)
+        """
+        if self.bootstrap_models is None or len(self.bootstrap_models) == 0:
+            # Fall back to ensemble model
+            return self.ensemble_model.predict(X)
+
+        all_predictions = []
+        for model in self.bootstrap_models:
+            pred = model.predict(X)
+            all_predictions.append(pred)
+
+        # Stack: (n_models, n_samples, n_outputs)
+        stacked = np.stack(all_predictions, axis=0)
+
+        # Compute mean and std
+        mean_pred = np.mean(stacked, axis=0)
+        std_pred = np.std(stacked, axis=0)
+
+        return mean_pred, std_pred
+
+    def has_bootstrap_ensemble(self) -> bool:
+        """Check if bootstrap ensemble is available"""
+        return self.bootstrap_models is not None and len(self.bootstrap_models) > 0
 
     def is_fixed_span_model(self) -> bool:
         """Check if using fixed-span model"""
@@ -120,6 +186,10 @@ class ModelManager:
             "ensemble": {
                 "xgb_weight": self.ensemble_model.xgb_weight,
                 "nn_weight": self.ensemble_model.nn_weight
+            },
+            "bootstrap_ensemble": {
+                "available": self.has_bootstrap_ensemble(),
+                "n_models": len(self.bootstrap_models) if self.bootstrap_models else 0
             },
             "feature_engineer": {
                 "n_features": len(self.feature_engineer.get_feature_names()),

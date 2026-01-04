@@ -23,7 +23,7 @@ class FeatureEngineer:
     - TE Sweep P1/P2 (Trailing Edge sweeps)
     - Panel Break (span fraction)
 
-    Derived features (10):
+    Derived features (15):
     - Aspect ratio proxy
     - Sweep differentials (taper indicators)
     - Average sweeps
@@ -32,6 +32,7 @@ class FeatureEngineer:
     - Planform complexity
     - Span/LOA ratio
     - Panel break interactions
+    - Structural features: span², span³, bending moment proxy, AR×panel interaction, structural slenderness
     """
 
     def __init__(self):
@@ -128,6 +129,31 @@ class FeatureEngineer:
         panel_break_sweep_interaction = panel_break * avg_le_sweep
         features.append(panel_break_sweep_interaction)
 
+        # === STRUCTURAL FEATURES (for deflection prediction) ===
+
+        # 10. Span squared (structural loading scales with span^2)
+        span_squared = span ** 2
+        features.append(span_squared)
+
+        # 11. Span cubed (deflection scales with span^3 for cantilever beams)
+        span_cubed = span ** 3
+        features.append(span_cubed)
+
+        # 12. Sweep-weighted bending moment proxy
+        # Higher sweep reduces effective span for bending
+        sweep_factor = np.cos(np.radians(avg_le_sweep))
+        bending_moment_proxy = span_squared * sweep_factor
+        features.append(bending_moment_proxy)
+
+        # 13. Aspect ratio × panel_break interaction
+        # Panel break location affects structural behavior
+        ar_panel_interaction = aspect_ratio_proxy * panel_break
+        features.append(ar_panel_interaction)
+
+        # 14. Structural slenderness (span^2 / LOA)
+        structural_slenderness = span_squared / (loa + 1e-6)
+        features.append(structural_slenderness)
+
         # Stack all features
         X_engineered = np.column_stack(features)
 
@@ -142,7 +168,7 @@ class FeatureEngineer:
             feature_names: List of raw feature names
 
         Returns:
-            Engineered features (n_samples, 17)
+            Engineered features (n_samples, 22)
         """
         self.fit(X, feature_names)
         return self.transform(X)
@@ -166,7 +192,13 @@ class FeatureEngineer:
             'Wing_Loading_Proxy',
             'Planform_Complexity',
             'Span_LOA_Ratio',
-            'Panel_Break_Sweep_Interaction'
+            'Panel_Break_Sweep_Interaction',
+            # Structural features
+            'Span_Squared',
+            'Span_Cubed',
+            'Bending_Moment_Proxy',
+            'AR_Panel_Interaction',
+            'Structural_Slenderness'
         ])
 
         return names
@@ -209,8 +241,9 @@ class FixedSpanFeatureEngineer:
     - TE Sweep P1/P2 (Trailing Edge sweeps)
     - Panel Break (span fraction)
 
-    Derived features (10):
+    Derived features (15):
     - Same as FeatureEngineer but with span fixed at 144 inches
+    - Includes structural features: span², span³, bending moment proxy, etc.
     """
 
     FIXED_SPAN = 144.0  # 12 feet in inches
@@ -253,7 +286,7 @@ class FixedSpanFeatureEngineer:
                         TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
 
         Returns:
-            Engineered features (n_samples, 16)
+            Engineered features (n_samples, 21)
         """
         # Extract raw features (span is fixed, not in input)
         loa = X[:, 0]          # Length Overall (inches)
@@ -310,6 +343,30 @@ class FixedSpanFeatureEngineer:
         panel_break_sweep_interaction = panel_break * avg_le_sweep
         features.append(panel_break_sweep_interaction)
 
+        # === STRUCTURAL FEATURES (for deflection prediction) ===
+
+        # 10. Span squared (structural loading scales with span^2)
+        # Note: fixed span, but included for consistency with variable-span model
+        span_squared = span ** 2
+        features.append(span_squared)
+
+        # 11. Span cubed (deflection scales with span^3 for cantilever beams)
+        span_cubed = span ** 3
+        features.append(span_cubed)
+
+        # 12. Sweep-weighted bending moment proxy
+        sweep_factor = np.cos(np.radians(avg_le_sweep))
+        bending_moment_proxy = span_squared * sweep_factor
+        features.append(bending_moment_proxy)
+
+        # 13. Aspect ratio × panel_break interaction
+        ar_panel_interaction = aspect_ratio_proxy * panel_break
+        features.append(ar_panel_interaction)
+
+        # 14. Structural slenderness (span^2 / LOA)
+        structural_slenderness = span_squared / (loa + 1e-6)
+        features.append(structural_slenderness)
+
         # Stack all features
         X_engineered = np.column_stack(features)
 
@@ -339,7 +396,13 @@ class FixedSpanFeatureEngineer:
             'Wing_Loading_Proxy',
             'Planform_Complexity',
             'Span_LOA_Ratio',
-            'Panel_Break_Sweep_Interaction'
+            'Panel_Break_Sweep_Interaction',
+            # Structural features
+            'Span_Squared',
+            'Span_Cubed',
+            'Bending_Moment_Proxy',
+            'AR_Panel_Interaction',
+            'Structural_Slenderness'
         ])
 
         return names

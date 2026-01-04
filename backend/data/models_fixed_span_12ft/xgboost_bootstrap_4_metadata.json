@@ -1,0 +1,11 @@
+{
+  "model_type": "XGBoost",
+  "n_outputs": 4,
+  "output_names": [
+    "Range",
+    "Endurance",
+    "MTOW",
+    "Cost"
+  ],
+  "is_fitted": true
+}

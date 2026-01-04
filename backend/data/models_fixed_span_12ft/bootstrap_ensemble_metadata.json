@@ -1,0 +1,17 @@
+{
+  "n_models": 5,
+  "random_seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "model_files": [
+    "xgboost_bootstrap_0.pkl",
+    "xgboost_bootstrap_1.pkl",
+    "xgboost_bootstrap_2.pkl",
+    "xgboost_bootstrap_3.pkl",
+    "xgboost_bootstrap_4.pkl"
+  ]
+}
