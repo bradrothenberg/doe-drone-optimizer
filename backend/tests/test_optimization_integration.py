@@ -307,7 +307,8 @@ def test_infeasible_constraints():
     print(f"  {impossible_constraints}")
 
     # Try optimization with constraint relaxation
-    handler = ConstraintHandler(impossible_constraints)
+    # Skip validation since we're intentionally testing infeasible constraints
+    handler = ConstraintHandler(impossible_constraints, validate=False)
 
     print("\nApplying balanced constraint relaxation...")
     relaxation_result = handler.relax_constraints('balanced')
