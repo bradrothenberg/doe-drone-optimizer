@@ -1,6 +1,8 @@
 """
 End-to-End tests for DOE Drone Optimizer
 Tests complete user workflows and edge cases
+
+Updated to use fixed-span (12ft) model
 """
 
 import pytest
@@ -16,14 +18,21 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
+# Use fixed-span models directory (the models we have in the repo)
+MODELS_DIR = backend_dir / "data" / "models_fixed_span_12ft"
+
+
 @pytest.fixture(scope="module")
 def client():
     """Create test client with model loading"""
     from app.core.model_manager import ModelManager
 
+    # Check if models exist
+    if not MODELS_DIR.exists():
+        pytest.skip(f"Models directory not found: {MODELS_DIR}")
+
     model_manager = ModelManager()
-    models_dir = backend_dir / "data" / "models"
-    model_manager.load_models(models_dir)
+    model_manager.load_models(MODELS_DIR)
     app.state.model_manager = model_manager
 
     return TestClient(app)
@@ -33,11 +42,11 @@ class TestWingtipDeflection:
     """Tests for wingtip deflection constraint (added in Week 4)"""
 
     def test_prediction_includes_wingtip_deflection(self, client):
-        """Verify predictions include wingtip deflection"""
+        """Verify predictions include wingtip deflection (fixed-span model)"""
+        # Fixed-span model: 6 inputs, NO span parameter
         request_data = {
             "designs": [{
                 "loa": 150,
-                "span": 180,
                 "le_sweep_p1": 20,
                 "le_sweep_p2": 10,
                 "te_sweep_p1": -15,
@@ -85,14 +94,14 @@ class TestWingtipDeflection:
 
 
 class TestEdgeCases:
-    """Tests for edge cases and boundary conditions"""
+    """Tests for edge cases and boundary conditions (fixed-span model)"""
 
     def test_minimum_design_parameters(self, client):
-        """Test with minimum valid design parameters"""
+        """Test with minimum valid design parameters (fixed-span model)"""
+        # Fixed-span model: 6 inputs, NO span parameter
         request_data = {
             "designs": [{
                 "loa": 96,      # Min LOA
-                "span": 72,     # Min span
                 "le_sweep_p1": 0,
                 "le_sweep_p2": -20,
                 "te_sweep_p1": -60,
@@ -109,11 +118,11 @@ class TestEdgeCases:
         assert pred['mtow_lbm'] > 0
 
     def test_maximum_design_parameters(self, client):
-        """Test with maximum valid design parameters"""
+        """Test with maximum valid design parameters (fixed-span model)"""
+        # Fixed-span model: 6 inputs, NO span parameter
         request_data = {
             "designs": [{
                 "loa": 192,     # Max LOA
-                "span": 216,    # Max span
                 "le_sweep_p1": 65,
                 "le_sweep_p2": 60,
                 "te_sweep_p1": 60,
@@ -232,10 +241,10 @@ class TestPresetScenarios:
 
 
 class TestCSVExportFormat:
-    """Tests to verify CSV export data format matches nTop requirements"""
+    """Tests to verify CSV export data format matches nTop requirements (fixed-span model)"""
 
     def test_design_parameters_for_ntop(self, client):
-        """Verify all 7 nTop input parameters are in response"""
+        """Verify all 6 nTop input parameters are in response (fixed-span model)"""
         request_data = {
             "population_size": 50,
             "n_generations": 20,
@@ -248,8 +257,8 @@ class TestCSVExportFormat:
         data = response.json()
         design = data['pareto_designs'][0]
 
-        # Required nTop input parameters
-        ntop_params = ['loa', 'span', 'le_sweep_p1', 'le_sweep_p2',
+        # Required nTop input parameters for fixed-span model (no span)
+        ntop_params = ['loa', 'le_sweep_p1', 'le_sweep_p2',
                        'te_sweep_p1', 'te_sweep_p2', 'panel_break']
 
         for param in ntop_params:
@@ -276,11 +285,12 @@ class TestConcurrency:
     """Tests for concurrent request handling"""
 
     def test_concurrent_predictions(self, client):
-        """Test multiple prediction requests"""
+        """Test multiple prediction requests (fixed-span model)"""
         import concurrent.futures
 
+        # Fixed-span model: 6 inputs, NO span parameter
         design = {
-            "loa": 150, "span": 180, "le_sweep_p1": 20, "le_sweep_p2": 10,
+            "loa": 150, "le_sweep_p1": 20, "le_sweep_p2": 10,
             "te_sweep_p1": -15, "te_sweep_p2": -10, "panel_break": 0.4
         }
 
@@ -318,7 +328,7 @@ class TestAPIDocumentation:
 
 if __name__ == "__main__":
     print("\n" + "=" * 80)
-    print("End-to-End Tests - DOE Drone Design Optimizer")
+    print("End-to-End Tests - DOE Drone Design Optimizer (Fixed-Span Model)")
     print("=" * 80)
 
     pytest.main([__file__, "-v", "-s", "--tb=short"])

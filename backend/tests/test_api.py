@@ -1,6 +1,8 @@
 """
 Integration tests for FastAPI endpoints
 Tests health, predict, and optimize endpoints
+
+Updated to use fixed-span (12ft) model
 """
 
 import pytest
@@ -18,15 +20,22 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
+# Use fixed-span models directory (the models we have in the repo)
+MODELS_DIR = backend_dir / "data" / "models_fixed_span_12ft"
+
+
 @pytest.fixture(scope="module")
 def client():
     """Create test client with model loading"""
     from app.core.model_manager import ModelManager
 
+    # Check if models exist
+    if not MODELS_DIR.exists():
+        pytest.skip(f"Models directory not found: {MODELS_DIR}")
+
     # Load models
     model_manager = ModelManager()
-    models_dir = backend_dir / "data" / "models"
-    model_manager.load_models(models_dir)
+    model_manager.load_models(MODELS_DIR)
 
     # Set in app state
     app.state.model_manager = model_manager
@@ -80,19 +89,19 @@ class TestHealthEndpoint:
 
 
 class TestPredictEndpoint:
-    """Test suite for /api/predict endpoint"""
+    """Test suite for /api/predict endpoint (fixed-span model - 6 inputs, no span)"""
 
     def test_single_design_prediction(self, client):
-        """Test prediction for a single design"""
+        """Test prediction for a single design (fixed-span model)"""
         print("\n" + "="*80)
-        print("TEST 2: Single Design Prediction")
+        print("TEST 2: Single Design Prediction (Fixed-Span)")
         print("="*80)
 
+        # Fixed-span model: 6 inputs, NO span parameter
         request_data = {
             "designs": [
                 {
                     "loa": 150,
-                    "span": 180,
                     "le_sweep_p1": 20,
                     "le_sweep_p2": 10,
                     "te_sweep_p1": -15,
@@ -115,7 +124,7 @@ class TestPredictEndpoint:
         assert data['inference_time_ms'] > 0
 
         pred = data['predictions'][0]
-        print(f"Design: LOA={request_data['designs'][0]['loa']}, Span={request_data['designs'][0]['span']}")
+        print(f"Design: LOA={request_data['designs'][0]['loa']}, Span=144 (fixed)")
         print(f"Predictions:")
         print(f"  Range: {pred['range_nm']:.1f} ± {pred['range_nm_uncertainty']:.1f} nm")
         print(f"  Endurance: {pred['endurance_hr']:.2f} ± {pred['endurance_hr_uncertainty']:.2f} hr")
@@ -125,25 +134,24 @@ class TestPredictEndpoint:
 
         # Validate predictions are reasonable
         assert 0 < pred['range_nm'] < 10000
-        assert 0 < pred['endurance_hr'] < 400  # Max from dataset is ~340 hr
+        assert 0 < pred['endurance_hr'] < 400
         assert 0 < pred['mtow_lbm'] < 20000
         assert 0 < pred['cost_usd'] < 200000
 
         print("PASSED\n")
 
     def test_batch_prediction(self, client):
-        """Test batch prediction for multiple designs"""
+        """Test batch prediction for multiple designs (fixed-span model)"""
         print("\n" + "="*80)
-        print("TEST 3: Batch Prediction (100 designs)")
+        print("TEST 3: Batch Prediction (100 designs, Fixed-Span)")
         print("="*80)
 
-        # Generate 100 random designs
+        # Generate 100 random designs (6 inputs, no span)
         np.random.seed(42)
         designs = []
         for _ in range(100):
             designs.append({
                 "loa": float(np.random.uniform(96, 192)),
-                "span": float(np.random.uniform(72, 216)),
                 "le_sweep_p1": float(np.random.uniform(0, 65)),
                 "le_sweep_p2": float(np.random.uniform(-20, 60)),
                 "te_sweep_p1": float(np.random.uniform(-60, 60)),
@@ -186,7 +194,6 @@ class TestPredictEndpoint:
             "designs": [
                 {
                     "loa": 300,  # Invalid: max is 192
-                    "span": 180,
                     "le_sweep_p1": 20,
                     "le_sweep_p2": 10,
                     "te_sweep_p1": -15,
@@ -409,7 +416,7 @@ class TestPerformance:
 if __name__ == "__main__":
     print("\n" + "="*80)
     print("FastAPI Integration Tests")
-    print("DOE Drone Design Optimizer API")
+    print("DOE Drone Design Optimizer API (Fixed-Span Model)")
     print("="*80)
 
     # Run tests with verbose output
