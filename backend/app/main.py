@@ -37,7 +37,9 @@ async def lifespan(app: FastAPI):
 
     try:
         model_manager = ModelManager()
-        models_dir = Path(__file__).parent.parent / "data" / "models"
+        # Use models directory from settings (defaults to fixed-span 12ft models)
+        models_dir = Path(__file__).parent.parent / settings.models_dir
+        logger.info(f"Loading models from: {models_dir}")
         model_manager.load_models(models_dir)
 
         # Store in app state

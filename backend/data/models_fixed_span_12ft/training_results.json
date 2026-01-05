@@ -1,0 +1,185 @@
+{
+  "training_date": "2026-01-04T15:54:40.563553",
+  "model_variant": "fixed_span_12ft_cv_bootstrap",
+  "fixed_span_inches": 144.0,
+  "dataset": {
+    "source_path": "D:\\nTop\\DOERunner\\gcp_10000sample_fixed_span_12ft\\doe_summary.csv",
+    "n_train": 6999,
+    "n_val": 1500,
+    "n_test": 1500,
+    "n_features_raw": 6,
+    "n_features_engineered": 21,
+    "feature_names": [
+      "loa",
+      "le_sweep_p1",
+      "le_sweep_p2",
+      "te_sweep_p1",
+      "te_sweep_p2",
+      "panel_break",
+      "Aspect_Ratio_Proxy",
+      "Sweep_Diff_P1",
+      "Sweep_Diff_P2",
+      "Avg_LE_Sweep",
+      "Avg_TE_Sweep",
+      "Sweep_Asymmetry",
+      "Wing_Loading_Proxy",
+      "Planform_Complexity",
+      "Span_LOA_Ratio",
+      "Panel_Break_Sweep_Interaction",
+      "Span_Squared",
+      "Span_Cubed",
+      "Bending_Moment_Proxy",
+      "AR_Panel_Interaction",
+      "Structural_Slenderness"
+    ]
+  },
+  "cross_validation": {
+    "n_folds": 5,
+    "summary": {
+      "overall": {
+        "r2_mean": 0.9244942285635915,
+        "r2_std": 0.007088504769717055
+      },
+      "per_output": {
+        "range_nm": {
+          "r2_mean": 0.9691993817255913,
+          "r2_std": 0.002459119510899426,
+          "mae_mean": 43.40154487313673,
+          "mae_std": 0.844982431471183
+        },
+        "endurance_hr": {
+          "r2_mean": 0.9695219608275092,
+          "r2_std": 0.0022216247211119676,
+          "mae_mean": 0.28724446400750103,
+          "mae_std": 0.005225764628274156
+        },
+        "mtow_lbm": {
+          "r2_mean": 0.9876044096052474,
+          "r2_std": 0.0009762086360311646,
+          "mae_mean": 78.63832913057692,
+          "mae_std": 1.9889551686808224
+        },
+        "material_cost_usd": {
+          "r2_mean": 0.984865122104071,
+          "r2_std": 0.0009512959541694184,
+          "mae_mean": 872.2866200078457,
+          "mae_std": 17.84801750681763
+        },
+        "wingtip_deflection_in": {
+          "r2_mean": 0.7112802685555388,
+          "r2_std": 0.03733016846309953,
+          "mae_mean": 0.5666852527113276,
+          "mae_std": 0.09052571831518974
+        }
+      }
+    }
+  },
+  "bootstrap_ensemble": {
+    "n_models": 5,
+    "test_metrics": {
+      "per_output": {
+        "range_nm": {
+          "r2": 0.9739638344746607,
+          "mae": 37.436762736898274,
+          "rmse": 68.94508510277855
+        },
+        "endurance_hr": {
+          "r2": 0.9742679409716943,
+          "mae": 0.24730143790454812,
+          "rmse": 0.45694171829061625
+        },
+        "mtow_lbm": {
+          "r2": 0.990173610952398,
+          "mae": 69.97385789597006,
+          "rmse": 105.53422357549952
+        },
+        "material_cost_usd": {
+          "r2": 0.9871749012051637,
+          "mae": 803.5181948238072,
+          "rmse": 1214.4133870927876
+        },
+        "wingtip_deflection_in": {
+          "r2": 0.787618940269175,
+          "mae": 0.4714120851830811,
+          "rmse": 4.011294974968779
+        }
+      },
+      "overall": {
+        "r2": 0.9426398455746183,
+        "mean_uncertainty": 76.72142028808594
+      },
+      "uncertainty": {
+        "range_nm": {
+          "mean_std": 15.0528564453125,
+          "coverage_1std": 0.30266666666666664
+        },
+        "endurance_hr": {
+          "mean_std": 0.09894433617591858,
+          "coverage_1std": 0.312
+        },
+        "mtow_lbm": {
+          "mean_std": 32.4790153503418,
+          "coverage_1std": 0.31266666666666665
+        },
+        "material_cost_usd": {
+          "mean_std": 335.8346862792969,
+          "coverage_1std": 0.2906666666666667
+        },
+        "wingtip_deflection_in": {
+          "mean_std": 0.14157551527023315,
+          "coverage_1std": 0.71
+        }
+      }
+    }
+  },
+  "primary_model": {
+    "test_metrics": {
+      "overall": {
+        "r2": 0.939055022216041,
+        "mae": 190.23103659315456,
+        "rmse": 561.6959308311071
+      },
+      "per_output": {
+        "range_nm": {
+          "r2": 0.9703762183356744,
+          "mae": 40.51115712562652,
+          "rmse": 73.5419344092128,
+          "mape": 2.672864023584744
+        },
+        "endurance_hr": {
+          "r2": 0.9710282452856488,
+          "mae": 0.265796637374154,
+          "rmse": 0.48485395307628754,
+          "mape": 2.6241956740566628
+        },
+        "mtow_lbm": {
+          "r2": 0.9885411516299007,
+          "mae": 76.58059426696614,
+          "rmse": 113.96377543447745,
+          "mape": 4.955262878983873
+        },
+        "material_cost_usd": {
+          "r2": 0.9864418271440331,
+          "mae": 833.3092609708467,
+          "rmse": 1248.6386379817177,
+          "mape": 5.607464222779245
+        },
+        "wingtip_deflection_in": {
+          "r2": 0.7788876686849473,
+          "mae": 0.48837396495864843,
+          "rmse": 4.09291937336243,
+          "mape": 3596.620048608992
+        }
+      }
+    }
+  },
+  "xgb_params": {
+    "n_estimators": 600,
+    "max_depth": 10,
+    "learning_rate": 0.05,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "reg_alpha": 0.1,
+    "reg_lambda": 1.0
+  }
+}

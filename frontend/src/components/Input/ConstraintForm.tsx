@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Box, Button, Slider, Typography, ToggleButton, ToggleButtonGroup, Checkbox } from '@mui/material'
+import { Box, Button, Slider, Typography, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel, Tooltip } from '@mui/material'
 import type { Constraints, OptimizationObjectives, OptimizationDirection } from '../../types'
 
 interface ConstraintFormProps {
@@ -13,13 +13,16 @@ interface ConstraintFormProps {
 // Unified metric configuration - each metric can be MIN, MAX, or LIMIT (with hard constraint)
 type MetricMode = 'minimize' | 'maximize' | 'limit'
 
+// Numeric constraint keys only (excludes allow_unrealistic_taper)
+type NumericConstraintKey = 'min_range_nm' | 'max_cost_usd' | 'max_mtow_lbm' | 'min_endurance_hr' | 'max_wingtip_deflection_in'
+
 interface MetricConfig {
   key: string
   label: string
   unit: string
   defaultMode: MetricMode
   // Constraint info when in target mode
-  constraintKey: keyof Constraints
+  constraintKey: NumericConstraintKey
   constraintType: 'min' | 'max'  // Whether the target sets a min or max constraint
   sliderMin: number
   sliderMax: number
@@ -335,7 +338,8 @@ export default function ConstraintForm({ constraints, objectives, onUpdate, isOp
       max_cost_usd: undefined,
       max_mtow_lbm: undefined,
       min_endurance_hr: undefined,
-      max_wingtip_deflection_in: undefined
+      max_wingtip_deflection_in: undefined,
+      allow_unrealistic_taper: false
     }
     const defaultModes: Record<string, MetricMode> = {}
     const allEnabled: Record<string, boolean> = {}
@@ -348,6 +352,12 @@ export default function ConstraintForm({ constraints, objectives, onUpdate, isOp
     setLocalModes(defaultModes)
     setEnabledMetrics(allEnabled)
     checkForChanges(clearedConstraints, defaultObjectives, defaultModes, allEnabled)
+  }
+
+  const handleAllowUnrealisticTaperChange = (checked: boolean) => {
+    const newConstraints = { ...localConstraints, allow_unrealistic_taper: checked }
+    setLocalConstraints(newConstraints)
+    checkForChanges(newConstraints, localObjectives, localModes)
   }
 
   const handleRunOptimization = () => {
@@ -624,6 +634,54 @@ export default function ConstraintForm({ constraints, objectives, onUpdate, isOp
             </Box>
           )
         })}
+      </Box>
+
+      {/* Advanced Options */}
+      <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid #e0e0e0' }}>
+        <Typography
+          sx={{
+            fontFamily: 'monospace',
+            fontSize: '0.85em',
+            color: '#666666',
+            mb: 1,
+            fontWeight: 500
+          }}
+        >
+          Advanced Options
+        </Typography>
+        <Tooltip
+          title="When enabled, allows wing geometries with expanding chord sections or very thin tips. These designs may be structurally challenging to manufacture."
+          placement="right"
+          arrow
+        >
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={localConstraints.allow_unrealistic_taper ?? false}
+                onChange={(e) => handleAllowUnrealisticTaperChange(e.target.checked)}
+                disabled={isOptimizing}
+                size="small"
+                sx={{
+                  color: '#666666',
+                  '&.Mui-checked': {
+                    color: '#ff5722'
+                  }
+                }}
+              />
+            }
+            label={
+              <Typography
+                sx={{
+                  fontFamily: 'monospace',
+                  fontSize: '0.85em',
+                  color: localConstraints.allow_unrealistic_taper ? '#ff5722' : '#666666'
+                }}
+              >
+                Allow unrealistic taper ratios
+              </Typography>
+            }
+          />
+        </Tooltip>
       </Box>
 
       <Button

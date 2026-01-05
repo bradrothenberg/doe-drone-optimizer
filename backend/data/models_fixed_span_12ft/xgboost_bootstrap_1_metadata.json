@@ -1,7 +1,5 @@
 {
-  "model_type": "Ensemble (XGBoost + Neural Network)",
-  "xgb_weight": 0.6,
-  "nn_weight": 0.4,
+  "model_type": "XGBoost",
   "n_outputs": 4,
   "output_names": [
     "Range",

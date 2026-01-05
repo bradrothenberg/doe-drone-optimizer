@@ -17,7 +17,7 @@ router = APIRouter()
 class DesignPoint(BaseModel):
     """Single design point for sensitivity analysis"""
     loa: float = Field(..., ge=96, le=192)
-    span: float = Field(..., ge=72, le=216)
+    span: Optional[float] = Field(default=None, ge=72, le=216)  # Optional for fixed-span mode
     le_sweep_p1: float = Field(..., ge=0, le=65)
     le_sweep_p2: float = Field(..., ge=-20, le=60)
     te_sweep_p1: float = Field(..., ge=-60, le=60)
@@ -94,6 +94,8 @@ async def compute_sensitivity(request: SensitivityRequest, req: Request):
 
     Perturbs each input by the specified percentage and measures
     the change in all outputs.
+
+    In fixed-span mode (12ft), span is not varied.
     """
     start_time = time.time()
 
@@ -105,23 +107,42 @@ async def compute_sensitivity(request: SensitivityRequest, req: Request):
     ensemble_model = model_manager.get_ensemble_model()
     feature_engineer = model_manager.get_feature_engineer()
 
+    # Check if using fixed-span mode
+    fixed_span = model_manager.get_fixed_span()
+    is_fixed_span = fixed_span is not None
+
     design = request.design
     pct = request.perturbation_pct / 100.0
 
-    # Base design as numpy array
-    base_inputs = np.array([[
-        design.loa, design.span, design.le_sweep_p1, design.le_sweep_p2,
-        design.te_sweep_p1, design.te_sweep_p2, design.panel_break
-    ]])
+    # Build base design as numpy array based on mode
+    if is_fixed_span:
+        # Fixed-span mode: 6 inputs (no span)
+        base_inputs = np.array([[
+            design.loa, design.le_sweep_p1, design.le_sweep_p2,
+            design.te_sweep_p1, design.te_sweep_p2, design.panel_break
+        ]])
+        # Use fixed-span input bounds and labels (exclude span)
+        input_bounds = {k: v for k, v in INPUT_BOUNDS.items() if k != 'span'}
+        input_labels = {k: v for k, v in INPUT_LABELS.items() if k != 'span'}
+        logger.info(f"Sensitivity analysis using fixed-span mode (span={fixed_span} inches)")
+    else:
+        # Variable-span mode: 7 inputs (includes span)
+        span_val = design.span if design.span is not None else 144.0
+        base_inputs = np.array([[
+            design.loa, span_val, design.le_sweep_p1, design.le_sweep_p2,
+            design.te_sweep_p1, design.te_sweep_p2, design.panel_break
+        ]])
+        input_bounds = INPUT_BOUNDS
+        input_labels = INPUT_LABELS
 
     # Get base prediction
     base_outputs = predict_single(ensemble_model, feature_engineer, base_inputs)
 
     sensitivities = []
-    input_names = list(INPUT_BOUNDS.keys())
+    input_names = list(input_bounds.keys())
 
     for i, name in enumerate(input_names):
-        bounds = INPUT_BOUNDS[name]
+        bounds = input_bounds[name]
         base_val = base_inputs[0, i]
 
         # Compute perturbation (use range-based for bounded inputs)
@@ -140,7 +161,7 @@ async def compute_sensitivity(request: SensitivityRequest, req: Request):
 
         # Compute deltas
         sensitivity = InputSensitivity(
-            input_name=INPUT_LABELS[name],
+            input_name=input_labels[name],
             base_value=float(base_val),
             perturbed_value=float(perturbed_val),
             range_nm_delta=float(perturbed_outputs['range_nm'] - base_outputs['range_nm']),
@@ -153,8 +174,19 @@ async def compute_sensitivity(request: SensitivityRequest, req: Request):
 
     computation_time_ms = (time.time() - start_time) * 1000
 
+    # Update design span for response (use fixed span if in fixed-span mode)
+    response_design = DesignPoint(
+        loa=design.loa,
+        span=fixed_span if is_fixed_span else design.span,
+        le_sweep_p1=design.le_sweep_p1,
+        le_sweep_p2=design.le_sweep_p2,
+        te_sweep_p1=design.te_sweep_p1,
+        te_sweep_p2=design.te_sweep_p2,
+        panel_break=design.panel_break
+    )
+
     return SensitivityResponse(
-        design=design,
+        design=response_design,
         perturbation_pct=request.perturbation_pct,
         sensitivities=sensitivities,
         computation_time_ms=computation_time_ms

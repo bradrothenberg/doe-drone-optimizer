@@ -10,8 +10,8 @@ venv/
 dist/
 build/
 
-# ML Models (too large for git)
-backend/data/models/*.pkl
+# ML Models - now tracked via Git LFS (see .gitattributes)
+# backend/data/models/*.pkl  # Removed - using LFS
 backend/data/doe_summary.csv
 
 # Node

@@ -7,26 +7,45 @@ from typing import List, Dict, Optional, Any
 
 
 class DesignParameters(BaseModel):
-    """Design parameters for a single drone design"""
+    """Design parameters for a single drone design
+
+    For fixed-span models (12ft), span is optional and defaults to 144 inches.
+    For variable-span models, span must be provided.
+    """
     loa: float = Field(..., ge=96, le=192, description="Length Overall (inches)")
-    span: float = Field(..., ge=72, le=216, description="Wing Span (inches)")
+    span: Optional[float] = Field(default=144.0, ge=72, le=216, description="Wing Span (inches) - optional for fixed-span model")
     le_sweep_p1: float = Field(..., ge=0, le=65, description="Leading Edge Sweep Panel 1 (degrees)")
     le_sweep_p2: float = Field(..., ge=-20, le=60, description="Leading Edge Sweep Panel 2 (degrees)")
     te_sweep_p1: float = Field(..., ge=-60, le=60, description="Trailing Edge Sweep Panel 1 (degrees)")
     te_sweep_p2: float = Field(..., ge=-60, le=60, description="Trailing Edge Sweep Panel 2 (degrees)")
     panel_break: float = Field(..., ge=0.10, le=0.65, description="Panel Break Location (fraction of span)")
 
-    def to_array(self) -> List[float]:
-        """Convert to array for model input"""
-        return [
-            self.loa,
-            self.span,
-            self.le_sweep_p1,
-            self.le_sweep_p2,
-            self.te_sweep_p1,
-            self.te_sweep_p2,
-            self.panel_break
-        ]
+    def to_array(self, include_span: bool = True) -> List[float]:
+        """Convert to array for model input
+
+        Args:
+            include_span: If True (variable-span model), include span in output.
+                         If False (fixed-span model), exclude span.
+        """
+        if include_span:
+            return [
+                self.loa,
+                self.span if self.span is not None else 144.0,
+                self.le_sweep_p1,
+                self.le_sweep_p2,
+                self.te_sweep_p1,
+                self.te_sweep_p2,
+                self.panel_break
+            ]
+        else:
+            return [
+                self.loa,
+                self.le_sweep_p1,
+                self.le_sweep_p2,
+                self.te_sweep_p1,
+                self.te_sweep_p2,
+                self.panel_break
+            ]
 
 
 class PredictRequest(BaseModel):

@@ -46,8 +46,9 @@ class Constraints(BaseModel):
     max_mtow_lbm: Optional[float] = Field(None, ge=0, le=20000, description="Maximum MTOW (lbm)")
     min_endurance_hr: Optional[float] = Field(None, ge=0, le=100, description="Minimum endurance (hr)")
     max_wingtip_deflection_in: Optional[float] = Field(None, ge=0, le=2000, description="Maximum wingtip deflection (in)")
+    allow_unrealistic_taper: bool = Field(False, description="Allow unrealistic taper ratios and bowtie geometries")
 
-    def to_dict(self) -> Dict[str, float]:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary, excluding None values"""
         return {k: v for k, v in self.model_dump().items() if v is not None}
 
