@@ -26,7 +26,12 @@ function App() {
     max_cost_usd: undefined,
     max_mtow_lbm: undefined,
     min_endurance_hr: undefined,
-    max_wingtip_deflection_in: undefined
+    max_wingtip_deflection_in: undefined,
+    // Default taper ratio constraints (enabled by default)
+    min_taper_ratio_p1: 0.1,
+    max_taper_ratio_p1: 1.0,
+    min_taper_ratio_p2: 0.1,
+    max_taper_ratio_p2: 0.8
   })
   const [submittedObjectives, setSubmittedObjectives] = useState<OptimizationObjectives>(defaultObjectives)
   const [selectedDesigns, setSelectedDesigns] = useState<DesignResult[]>([])

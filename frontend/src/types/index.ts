@@ -3,11 +3,52 @@
  */
 
 export interface Constraints {
+  // Performance constraints
   min_range_nm?: number
   max_cost_usd?: number
   max_mtow_lbm?: number
   min_endurance_hr?: number
   max_wingtip_deflection_in?: number
+
+  // Taper ratio constraints (tip_chord / root_chord)
+  taper_ratio_p1_fixed?: number
+  min_taper_ratio_p1?: number
+  max_taper_ratio_p1?: number
+  taper_ratio_p2_fixed?: number
+  min_taper_ratio_p2?: number
+  max_taper_ratio_p2?: number
+
+  // Angle constraints - LE Sweep P1
+  le_sweep_p1_fixed?: number
+  le_sweep_p1_min?: number
+  le_sweep_p1_max?: number
+
+  // Angle constraints - LE Sweep P2
+  le_sweep_p2_fixed?: number
+  le_sweep_p2_min?: number
+  le_sweep_p2_max?: number
+
+  // Angle constraints - TE Sweep P1
+  te_sweep_p1_fixed?: number
+  te_sweep_p1_min?: number
+  te_sweep_p1_max?: number
+
+  // Angle constraints - TE Sweep P2
+  te_sweep_p2_fixed?: number
+  te_sweep_p2_min?: number
+  te_sweep_p2_max?: number
+
+  // Root chord ratio constraints (chord / span)
+  root_chord_ratio_fixed?: number
+  min_root_chord_ratio?: number
+  max_root_chord_ratio?: number
+
+  // Panel break constraints (fraction of half-span, 0-1)
+  panel_break_fixed?: number
+  min_panel_break?: number
+  max_panel_break?: number
+
+  // Advanced options
   allow_unrealistic_taper?: boolean
 }
 

@@ -41,11 +41,52 @@ class OptimizationObjectives(BaseModel):
 
 class Constraints(BaseModel):
     """User constraints for optimization"""
+    # Performance constraints
     min_range_nm: Optional[float] = Field(None, ge=0, le=10000, description="Minimum range (nm)")
     max_cost_usd: Optional[float] = Field(None, ge=0, le=200000, description="Maximum cost ($)")
     max_mtow_lbm: Optional[float] = Field(None, ge=0, le=20000, description="Maximum MTOW (lbm)")
     min_endurance_hr: Optional[float] = Field(None, ge=0, le=100, description="Minimum endurance (hr)")
     max_wingtip_deflection_in: Optional[float] = Field(None, ge=0, le=2000, description="Maximum wingtip deflection (in)")
+
+    # Taper ratio constraints (tip_chord / root_chord for each panel)
+    taper_ratio_p1_fixed: Optional[float] = Field(None, ge=0.1, le=1.5, description="Fixed taper ratio for panel 1")
+    min_taper_ratio_p1: Optional[float] = Field(None, ge=0.1, le=1.5, description="Minimum taper ratio for panel 1")
+    max_taper_ratio_p1: Optional[float] = Field(None, ge=0.1, le=1.5, description="Maximum taper ratio for panel 1")
+    taper_ratio_p2_fixed: Optional[float] = Field(None, ge=0.1, le=1.5, description="Fixed taper ratio for panel 2")
+    min_taper_ratio_p2: Optional[float] = Field(None, ge=0.1, le=1.5, description="Minimum taper ratio for panel 2")
+    max_taper_ratio_p2: Optional[float] = Field(None, ge=0.1, le=1.5, description="Maximum taper ratio for panel 2")
+
+    # Angle constraints - Leading Edge Sweep Panel 1
+    le_sweep_p1_fixed: Optional[float] = Field(None, ge=0, le=65, description="Fixed LE sweep P1 (degrees)")
+    le_sweep_p1_min: Optional[float] = Field(None, ge=0, le=65, description="Min LE sweep P1 (degrees)")
+    le_sweep_p1_max: Optional[float] = Field(None, ge=0, le=65, description="Max LE sweep P1 (degrees)")
+
+    # Angle constraints - Leading Edge Sweep Panel 2
+    le_sweep_p2_fixed: Optional[float] = Field(None, ge=-20, le=60, description="Fixed LE sweep P2 (degrees)")
+    le_sweep_p2_min: Optional[float] = Field(None, ge=-20, le=60, description="Min LE sweep P2 (degrees)")
+    le_sweep_p2_max: Optional[float] = Field(None, ge=-20, le=60, description="Max LE sweep P2 (degrees)")
+
+    # Angle constraints - Trailing Edge Sweep Panel 1
+    te_sweep_p1_fixed: Optional[float] = Field(None, ge=-60, le=60, description="Fixed TE sweep P1 (degrees)")
+    te_sweep_p1_min: Optional[float] = Field(None, ge=-60, le=60, description="Min TE sweep P1 (degrees)")
+    te_sweep_p1_max: Optional[float] = Field(None, ge=-60, le=60, description="Max TE sweep P1 (degrees)")
+
+    # Angle constraints - Trailing Edge Sweep Panel 2
+    te_sweep_p2_fixed: Optional[float] = Field(None, ge=-60, le=60, description="Fixed TE sweep P2 (degrees)")
+    te_sweep_p2_min: Optional[float] = Field(None, ge=-60, le=60, description="Min TE sweep P2 (degrees)")
+    te_sweep_p2_max: Optional[float] = Field(None, ge=-60, le=60, description="Max TE sweep P2 (degrees)")
+
+    # Root chord constraint (ratio of chord to span)
+    root_chord_ratio_fixed: Optional[float] = Field(None, ge=0.3, le=2.0, description="Fixed root chord / span ratio")
+    min_root_chord_ratio: Optional[float] = Field(None, ge=0.3, le=2.0, description="Min root chord / span ratio")
+    max_root_chord_ratio: Optional[float] = Field(None, ge=0.3, le=2.0, description="Max root chord / span ratio")
+
+    # Panel break constraint (fraction of half-span, 0-1)
+    panel_break_fixed: Optional[float] = Field(None, ge=0.1, le=0.65, description="Fixed panel break (fraction)")
+    min_panel_break: Optional[float] = Field(None, ge=0.1, le=0.65, description="Min panel break (fraction)")
+    max_panel_break: Optional[float] = Field(None, ge=0.1, le=0.65, description="Max panel break (fraction)")
+
+    # Advanced options
     allow_unrealistic_taper: bool = Field(False, description="Allow unrealistic taper ratios and bowtie geometries")
 
     def to_dict(self) -> Dict[str, Any]:

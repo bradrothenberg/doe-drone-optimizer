@@ -11,10 +11,14 @@ import {
   TablePagination,
   TableSortLabel,
   Button,
-  Checkbox
+  Checkbox,
+  IconButton,
+  Tooltip
 } from '@mui/material'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import Planform from '../Visualization/Planform'
 import type { DesignResult } from '../../types'
+import { launchNtop } from '../../services/api'
 
 interface DesignTableProps {
   designs: DesignResult[]
@@ -42,6 +46,7 @@ export default function DesignTable({
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const [sortKey, setSortKey] = useState<NumericSortKey>('range_nm')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
+  const [launchingIndex, setLaunchingIndex] = useState<number | null>(null)
 
   const handleSort = (key: NumericSortKey) => {
     const isAsc = sortKey === key && sortOrder === 'asc'
@@ -73,6 +78,28 @@ export default function DesignTable({
     }
   }
 
+  const handleLaunchNtop = async (design: DesignResult & { originalIndex: number }, e: React.MouseEvent) => {
+    e.stopPropagation() // Don't trigger row click
+
+    setLaunchingIndex(design.originalIndex)
+    try {
+      await launchNtop({
+        run_id: `Design ${design.originalIndex + 1}`,
+        loa: design.loa,
+        span: design.span,
+        le_sweep_p1: design.le_sweep_p1,
+        le_sweep_p2: design.le_sweep_p2,
+        te_sweep_p1: design.te_sweep_p1,
+        te_sweep_p2: design.te_sweep_p2,
+        panel_break: design.panel_break
+      })
+    } catch (error) {
+      console.error('Failed to launch nTop:', error)
+    } finally {
+      setLaunchingIndex(null)
+    }
+  }
+
   // Track original indices for highlighting
   const indexedDesigns = designs.map((d, i) => ({ ...d, originalIndex: i }))
 
@@ -88,16 +115,18 @@ export default function DesignTable({
   )
 
   const handleExportCSV = () => {
+    // Export in the current sorted order with design number
     const csv = [
-      ['LOA In', 'Span', 'LE Sweep P1', 'LE Sweep P2', 'TE Sweep P1', 'TE Sweep P2', 'Panel Break %'].join(','),
-      ...designs.map(d =>
+      ['Design #', 'LOA In', 'Span', 'LE Sweep P1', 'LE Sweep P2', 'TE Sweep P1', 'TE Sweep P2', 'Panel Break %'].join(','),
+      ...sortedDesigns.map(d =>
         [
-          d.loa,
-          d.span,
-          d.le_sweep_p1,
-          d.le_sweep_p2,
-          d.te_sweep_p1,
-          d.te_sweep_p2,
+          d.originalIndex + 1,  // Design number (1-indexed)
+          d.loa.toFixed(2),
+          d.span.toFixed(2),
+          d.le_sweep_p1.toFixed(2),
+          d.le_sweep_p2.toFixed(2),
+          d.te_sweep_p1.toFixed(2),
+          d.te_sweep_p2.toFixed(2),
           (d.panel_break * 100).toFixed(2) // Convert to percentage
         ].join(',')
       )
@@ -174,6 +203,9 @@ export default function DesignTable({
                   Compare
                 </TableCell>
               )}
+              <TableCell sx={{ fontWeight: 'bold', borderBottom: '2px solid #000000', width: 60 }}>
+                #
+              </TableCell>
               <TableCell sx={{ fontWeight: 'bold', borderBottom: '2px solid #000000' }}>
                 Planform
               </TableCell>
@@ -196,6 +228,9 @@ export default function DesignTable({
                   </TableSortLabel>
                 </TableCell>
               ))}
+              <TableCell sx={{ fontWeight: 'bold', borderBottom: '2px solid #000000', width: 60 }}>
+                nTop
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -203,6 +238,7 @@ export default function DesignTable({
               const selected = isSelected(design)
               const disabled = !selected && selectedDesigns.length >= maxSelections
               const isHighlighted = design.originalIndex === highlightedIndex
+              const isLaunching = launchingIndex === design.originalIndex
               return (
               <TableRow
                 key={idx}
@@ -234,6 +270,9 @@ export default function DesignTable({
                     />
                   </TableCell>
                 )}
+                <TableCell sx={{ p: 0.5, textAlign: 'center', fontWeight: 'bold' }}>
+                  {design.originalIndex + 1}
+                </TableCell>
                 <TableCell sx={{ p: 0.5 }}>
                   <Planform design={design} width={140} height={100} />
                 </TableCell>
@@ -244,6 +283,26 @@ export default function DesignTable({
                 <TableCell>{design.mtow_lbm.toFixed(0)}</TableCell>
                 <TableCell>${design.cost_usd.toLocaleString()}</TableCell>
                 <TableCell>{design.wingtip_deflection_in.toFixed(1)}</TableCell>
+                <TableCell sx={{ p: 0.5 }}>
+                  <Tooltip title="Open in nTop">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => handleLaunchNtop(design, e)}
+                      disabled={isLaunching}
+                      sx={{
+                        color: '#2e7d32',
+                        '&:hover': {
+                          bgcolor: '#e8f5e9'
+                        },
+                        '&:disabled': {
+                          color: '#81c784'
+                        }
+                      }}
+                    >
+                      <OpenInNewIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
               </TableRow>
             )})}
           </TableBody>

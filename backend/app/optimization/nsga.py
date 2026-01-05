@@ -6,6 +6,7 @@ Supports both variable-span (7 inputs) and fixed-span (6 inputs) modes
 
 import numpy as np
 from pymoo.core.problem import Problem
+from pymoo.core.sampling import Sampling
 from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.operators.crossover.sbx import SBX
 from pymoo.operators.mutation.pm import PM
@@ -17,8 +18,149 @@ import logging
 
 from app.core.config import settings
 
+
+class TaperAwareSampling(Sampling):
+    """
+    Custom sampling that ensures initial population includes designs
+    satisfying taper ratio constraints. This helps NSGA-II explore the
+    feasible region when geometric constraints are active.
+    """
+
+    def __init__(self, geometric_constraints=None, fixed_span=None):
+        super().__init__()
+        self.geometric_constraints = geometric_constraints or {}
+        self.fixed_span = fixed_span
+
+    def _do(self, problem, n_samples, **kwargs):
+        # Start with random sampling
+        X = np.random.random((n_samples, problem.n_var))
+
+        # Scale to bounds
+        xl, xu = problem.bounds()
+        X = xl + X * (xu - xl)
+
+        gc = self.geometric_constraints
+        if not gc:
+            return X
+
+        # Check if we have taper constraints that need special handling
+        max_taper_p2 = gc.get('max_taper_ratio_p2')
+        le_sweep_p2_fixed = gc.get('le_sweep_p2_fixed')
+
+        if max_taper_p2 is not None and le_sweep_p2_fixed is not None:
+            # We need to bias TE P2 values to achieve lower taper ratios
+            # Taper P2 depends on LE P2 and TE P2 sweep angles
+            # Lower taper = need TE P2 significantly lower than LE P2
+
+            # Determine which column is TE_Sweep_P2
+            if self.fixed_span is not None:
+                # Fixed-span: [LOA, LE_P1, LE_P2, TE_P1, TE_P2, Panel_Break]
+                te_p2_idx = 4
+            else:
+                # Variable-span: [LOA, Span, LE_P1, LE_P2, TE_P1, TE_P2, Panel_Break]
+                te_p2_idx = 5
+
+            # For half the population, bias TE P2 toward values that give lower taper
+            # With LE P2 = 40°, we need TE P2 < 40° (ideally negative or low positive)
+            # to achieve taper ratios below 0.8
+            n_biased = n_samples // 2
+
+            # Sample TE P2 from a range biased toward lower values
+            # Use the lower half of the TE P2 range to explore low taper designs
+            te_p2_min = xl[te_p2_idx]
+            te_p2_max = xu[te_p2_idx]
+
+            # Bias toward lower TE P2 values (lower 60% of range)
+            biased_max = te_p2_min + 0.6 * (te_p2_max - te_p2_min)
+            X[:n_biased, te_p2_idx] = np.random.uniform(te_p2_min, biased_max, n_biased)
+
+            logger.info(f"TaperAwareSampling: Biased {n_biased}/{n_samples} samples toward lower TE P2 values [{te_p2_min:.1f}, {biased_max:.1f}]")
+
+        return X
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def calculate_chords(loa, span, le_sweep_p1, le_sweep_p2, te_sweep_p1, te_sweep_p2, panel_break):
+    """
+    Calculate chord at root, panel break, and wingtip.
+
+    Wing geometry:
+    - LE_x(y) = y * tan(LE_sweep)  (LE moves aft with positive sweep)
+    - TE_x(y) = LOA + y * tan(TE_sweep)  (TE moves aft with positive sweep)
+    - Chord(y) = TE_x(y) - LE_x(y) = LOA + y * tan(TE) - y * tan(LE)
+               = LOA - y * (tan(LE) - tan(TE))
+
+    For taper (chord decreasing outboard): tan(LE) > tan(TE)
+    Example: LE=40°, TE=-40° gives tan(40)-tan(-40) = 0.84-(-0.84) = 1.68 > 0 → tapers
+
+    Args:
+        loa: Length Overall (root chord) in inches
+        span: Full wingspan in inches
+        le_sweep_p1: Leading edge sweep panel 1 (degrees)
+        le_sweep_p2: Leading edge sweep panel 2 (degrees)
+        te_sweep_p1: Trailing edge sweep panel 1 (degrees)
+        te_sweep_p2: Trailing edge sweep panel 2 (degrees)
+        panel_break: Spanwise location of panel break (fraction 0-1)
+
+    Returns:
+        tuple: (chord_root, chord_at_break, chord_tip)
+    """
+    half_span = span / 2
+    break_span = half_span * panel_break
+    remaining_span = half_span - break_span
+
+    le_sweep_p1_rad = np.radians(le_sweep_p1)
+    le_sweep_p2_rad = np.radians(le_sweep_p2)
+    te_sweep_p1_rad = np.radians(te_sweep_p1)
+    te_sweep_p2_rad = np.radians(te_sweep_p2)
+
+    # Root chord is simply LOA
+    chord_root = loa
+
+    # Chord at panel break: LOA - break_span * (tan(LE_P1) - tan(TE_P1))
+    chord_at_break = loa - break_span * (np.tan(le_sweep_p1_rad) - np.tan(te_sweep_p1_rad))
+
+    # Chord at tip: continue from panel break with P2 sweeps
+    # LE position at break: break_span * tan(LE_P1)
+    # TE position at break: LOA + break_span * tan(TE_P1)
+    # LE position at tip: break_span * tan(LE_P1) + remaining_span * tan(LE_P2)
+    # TE position at tip: LOA + break_span * tan(TE_P1) + remaining_span * tan(TE_P2)
+    # Chord at tip = TE_tip - LE_tip
+    le_at_tip = np.tan(le_sweep_p1_rad) * break_span + np.tan(le_sweep_p2_rad) * remaining_span
+    te_at_tip = loa + np.tan(te_sweep_p1_rad) * break_span + np.tan(te_sweep_p2_rad) * remaining_span
+    chord_tip = te_at_tip - le_at_tip
+
+    return chord_root, chord_at_break, chord_tip
+
+
+def calculate_taper_ratios(loa, span, le_sweep_p1, le_sweep_p2, te_sweep_p1, te_sweep_p2, panel_break):
+    """
+    Calculate taper ratios for each panel.
+
+    Taper ratio = outboard_chord / inboard_chord
+    - Panel 1: chord_at_break / chord_root
+    - Panel 2: chord_tip / chord_at_break
+
+    Args:
+        Same as calculate_chords
+
+    Returns:
+        tuple: (taper_p1, taper_p2)
+    """
+    chord_root, chord_at_break, chord_tip = calculate_chords(
+        loa, span, le_sweep_p1, le_sweep_p2, te_sweep_p1, te_sweep_p2, panel_break
+    )
+
+    # Avoid division by zero
+    chord_root = np.maximum(chord_root, 0.1)
+    chord_at_break = np.maximum(chord_at_break, 0.1)
+
+    taper_p1 = chord_at_break / chord_root
+    taper_p2 = chord_tip / chord_at_break
+
+    return taper_p1, taper_p2
 
 
 class DroneDesignProblem(Problem):
@@ -67,7 +209,8 @@ class DroneDesignProblem(Problem):
         user_constraints: Optional[Dict] = None,
         objectives: Optional[Dict[str, str]] = None,
         fixed_span: Optional[float] = None,
-        allow_unrealistic_taper: bool = False
+        allow_unrealistic_taper: bool = False,
+        geometric_constraints: Optional[Dict] = None
     ):
         """
         Initialize drone design optimization problem
@@ -79,31 +222,127 @@ class DroneDesignProblem(Problem):
             objectives: Dict mapping output names to 'minimize' or 'maximize'
             fixed_span: If provided, use fixed-span mode with this span value (inches)
             allow_unrealistic_taper: If True, skip taper ratio and bowtie filtering
+            geometric_constraints: Optional dict with angle bounds and taper constraints
+                - le_sweep_p1_fixed, le_sweep_p1_min, le_sweep_p1_max
+                - le_sweep_p2_fixed, le_sweep_p2_min, le_sweep_p2_max
+                - te_sweep_p1_fixed, te_sweep_p1_min, te_sweep_p1_max
+                - te_sweep_p2_fixed, te_sweep_p2_min, te_sweep_p2_max
+                - min_taper_ratio_p1, max_taper_ratio_p1
+                - min_taper_ratio_p2, max_taper_ratio_p2
+                - min_root_chord_ratio, max_root_chord_ratio
         """
         self.ensemble_model = ensemble_model
         self.feature_engineer = feature_engineer
         self.user_constraints = user_constraints or {}
         self.fixed_span = fixed_span
         self.allow_unrealistic_taper = allow_unrealistic_taper
+        self.geometric_constraints = geometric_constraints or {}
 
         # Merge user objectives with defaults
         self.objectives = self.DEFAULT_OBJECTIVES.copy()
         if objectives:
             self.objectives.update(objectives)
 
+        # Default design variable bounds
+        # Fixed-span: [LOA, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+        # Variable-span: [LOA, Span, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
+        default_bounds = {
+            'loa': (96, 192),
+            'span': (72, 216),
+            'le_sweep_p1': (0, 65),
+            'le_sweep_p2': (-20, 60),
+            'te_sweep_p1': (-60, 60),
+            'te_sweep_p2': (-60, 60),
+            'panel_break': (0.10, 0.65)
+        }
+
+        # Apply geometric constraints to override bounds
+        gc = self.geometric_constraints
+
+        # Helper to get bound with fixed/min/max priority
+        def get_bound(param, default_min, default_max):
+            fixed_key = f'{param}_fixed'
+            min_key = f'{param}_min'
+            max_key = f'{param}_max'
+
+            if fixed_key in gc and gc[fixed_key] is not None:
+                # Fixed value: set both bounds to that value
+                return (gc[fixed_key], gc[fixed_key])
+            else:
+                # Range: use min/max if provided, else defaults
+                lb = gc.get(min_key, default_min) if gc.get(min_key) is not None else default_min
+                ub = gc.get(max_key, default_max) if gc.get(max_key) is not None else default_max
+                return (lb, ub)
+
+        # Get potentially modified bounds for angles
+        le_sweep_p1_bounds = get_bound('le_sweep_p1', *default_bounds['le_sweep_p1'])
+        le_sweep_p2_bounds = get_bound('le_sweep_p2', *default_bounds['le_sweep_p2'])
+        te_sweep_p1_bounds = get_bound('te_sweep_p1', *default_bounds['te_sweep_p1'])
+        te_sweep_p2_bounds = get_bound('te_sweep_p2', *default_bounds['te_sweep_p2'])
+
+        # Get potentially modified bounds for panel break
+        panel_break_bounds = get_bound('panel_break', *default_bounds['panel_break'])
+
+        # Log any angle constraints applied
+        for param, bounds in [('le_sweep_p1', le_sweep_p1_bounds), ('le_sweep_p2', le_sweep_p2_bounds),
+                               ('te_sweep_p1', te_sweep_p1_bounds), ('te_sweep_p2', te_sweep_p2_bounds)]:
+            default = default_bounds[param]
+            if bounds != default:
+                if bounds[0] == bounds[1]:
+                    logger.info(f"Angle constraint: {param} FIXED at {bounds[0]}°")
+                else:
+                    logger.info(f"Angle constraint: {param} range [{bounds[0]}, {bounds[1]}]°")
+
+        # Log panel break constraint if modified
+        if panel_break_bounds != default_bounds['panel_break']:
+            if panel_break_bounds[0] == panel_break_bounds[1]:
+                logger.info(f"Panel break constraint: FIXED at {panel_break_bounds[0]}")
+            else:
+                logger.info(f"Panel break constraint: range [{panel_break_bounds[0]}, {panel_break_bounds[1]}]")
+
         # Design variable bounds depend on mode
         if fixed_span is not None:
             # Fixed-span mode: 6 design variables (no span)
             # Order: [LOA, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
-            xl = np.array([96, 0, -20, -60, -60, 0.10])   # Lower bounds
-            xu = np.array([192, 65, 60, 60, 60, 0.65])    # Upper bounds
+            xl = np.array([
+                default_bounds['loa'][0],
+                le_sweep_p1_bounds[0],
+                le_sweep_p2_bounds[0],
+                te_sweep_p1_bounds[0],
+                te_sweep_p2_bounds[0],
+                panel_break_bounds[0]
+            ])
+            xu = np.array([
+                default_bounds['loa'][1],
+                le_sweep_p1_bounds[1],
+                le_sweep_p2_bounds[1],
+                te_sweep_p1_bounds[1],
+                te_sweep_p2_bounds[1],
+                panel_break_bounds[1]
+            ])
             n_var = 6
             logger.info(f"Using FIXED-SPAN mode (span={fixed_span} inches)")
         else:
             # Variable-span mode: 7 design variables (includes span)
             # Order: [LOA, Span, LE_Sweep_P1, LE_Sweep_P2, TE_Sweep_P1, TE_Sweep_P2, Panel_Break]
-            xl = np.array([96, 72, 0, -20, -60, -60, 0.10])   # Lower bounds
-            xu = np.array([192, 216, 65, 60, 60, 60, 0.65])   # Upper bounds
+            xl = np.array([
+                default_bounds['loa'][0],
+                default_bounds['span'][0],
+                le_sweep_p1_bounds[0],
+                le_sweep_p2_bounds[0],
+                te_sweep_p1_bounds[0],
+                te_sweep_p2_bounds[0],
+                panel_break_bounds[0]
+            ])
+            xu = np.array([
+                default_bounds['loa'][1],
+                default_bounds['span'][1],
+                le_sweep_p1_bounds[1],
+                le_sweep_p2_bounds[1],
+                te_sweep_p1_bounds[1],
+                te_sweep_p2_bounds[1],
+                panel_break_bounds[1]
+            ])
             n_var = 7
             logger.info("Using VARIABLE-SPAN mode")
 
@@ -182,12 +421,13 @@ class DroneDesignProblem(Problem):
             te_sweep_p1_rad = np.radians(te_sweep_p1)
             te_sweep_p2_rad = np.radians(te_sweep_p2)
 
-            # Chord at panel break and tip
-            chord_at_break = loa - break_span * (np.tan(le_sweep_p1_rad) + np.tan(te_sweep_p1_rad))
-            le_offset_at_break = np.tan(le_sweep_p1_rad) * break_span
-            te_offset_at_break = np.tan(te_sweep_p1_rad) * break_span
-            chord_at_tip = loa - (le_offset_at_break + np.tan(le_sweep_p2_rad) * remaining_span) - \
-                           (te_offset_at_break + np.tan(te_sweep_p2_rad) * remaining_span)
+            # Chord at panel break: LOA - break_span * (tan(LE) - tan(TE))
+            chord_at_break = loa - break_span * (np.tan(le_sweep_p1_rad) - np.tan(te_sweep_p1_rad))
+
+            # Chord at tip: TE_tip - LE_tip
+            le_at_tip = np.tan(le_sweep_p1_rad) * break_span + np.tan(le_sweep_p2_rad) * remaining_span
+            te_at_tip = loa + np.tan(te_sweep_p1_rad) * break_span + np.tan(te_sweep_p2_rad) * remaining_span
+            chord_at_tip = te_at_tip - le_at_tip
 
             MIN_CHORD = 2.0  # Minimum chord in inches
             chord_violation_break = np.maximum(0, MIN_CHORD - chord_at_break)
@@ -219,6 +459,89 @@ class DroneDesignProblem(Problem):
             violation = np.maximum(0, wingtip_deflection_in - max_deflection)
             penalty += violation * 10.0  # Penalty for excessive deflection
 
+        # Apply geometric constraints (taper ratios, root chord ratio)
+        gc = self.geometric_constraints
+        if gc:
+            # Extract design variables if not already done
+            if self.fixed_span is not None:
+                loa = X[:, 0]
+                span = np.full(len(X), self.fixed_span)
+                le_sweep_p1 = X[:, 1]
+                le_sweep_p2 = X[:, 2]
+                te_sweep_p1 = X[:, 3]
+                te_sweep_p2 = X[:, 4]
+                panel_break = X[:, 5]
+            else:
+                loa = X[:, 0]
+                span = X[:, 1]
+                le_sweep_p1 = X[:, 2]
+                le_sweep_p2 = X[:, 3]
+                te_sweep_p1 = X[:, 4]
+                te_sweep_p2 = X[:, 5]
+                panel_break = X[:, 6]
+
+            # Calculate taper ratios using geometry
+            taper_p1, taper_p2 = calculate_taper_ratios(
+                loa, span, le_sweep_p1, le_sweep_p2, te_sweep_p1, te_sweep_p2, panel_break
+            )
+
+            # Taper ratio constraints for Panel 1
+            # Fixed value takes precedence over range
+            if gc.get('taper_ratio_p1_fixed') is not None:
+                target = gc['taper_ratio_p1_fixed']
+                violation = np.abs(taper_p1 - target)
+                penalty += violation * 10000  # Very strong penalty for deviation from fixed value
+            else:
+                if gc.get('min_taper_ratio_p1') is not None:
+                    violation = np.maximum(0, gc['min_taper_ratio_p1'] - taper_p1)
+                    penalty += violation * 5000  # Strong penalty
+
+                if gc.get('max_taper_ratio_p1') is not None:
+                    violation = np.maximum(0, taper_p1 - gc['max_taper_ratio_p1'])
+                    penalty += violation * 5000  # Strong penalty
+
+            # Taper ratio constraints for Panel 2
+            # Fixed value takes precedence over range
+            if gc.get('taper_ratio_p2_fixed') is not None:
+                target = gc['taper_ratio_p2_fixed']
+                violation = np.abs(taper_p2 - target)
+                penalty += violation * 10000  # Very strong penalty for deviation from fixed value
+            else:
+                if gc.get('min_taper_ratio_p2') is not None:
+                    violation = np.maximum(0, gc['min_taper_ratio_p2'] - taper_p2)
+                    penalty += violation * 5000  # Strong penalty
+
+                if gc.get('max_taper_ratio_p2') is not None:
+                    violation = np.maximum(0, taper_p2 - gc['max_taper_ratio_p2'])
+                    penalty += violation * 5000  # Strong penalty
+
+            # Root chord ratio constraints (chord / span)
+            root_chord_ratio = loa / span
+
+            # Fixed value takes precedence over range
+            if gc.get('root_chord_ratio_fixed') is not None:
+                target = gc['root_chord_ratio_fixed']
+                violation = np.abs(root_chord_ratio - target)
+                penalty += violation * 1000  # Strong penalty for deviation from fixed value
+            else:
+                if gc.get('min_root_chord_ratio') is not None:
+                    violation = np.maximum(0, gc['min_root_chord_ratio'] - root_chord_ratio)
+                    penalty += violation * 500
+
+                if gc.get('max_root_chord_ratio') is not None:
+                    violation = np.maximum(0, root_chord_ratio - gc['max_root_chord_ratio'])
+                    penalty += violation * 500
+
+            # Panel break constraints (fixed values handled via bounds, range handled here)
+            if gc.get('panel_break_fixed') is None:  # Only apply range constraints if not fixed
+                if gc.get('min_panel_break') is not None:
+                    violation = np.maximum(0, gc['min_panel_break'] - panel_break)
+                    penalty += violation * 500
+
+                if gc.get('max_panel_break') is not None:
+                    violation = np.maximum(0, panel_break - gc['max_panel_break'])
+                    penalty += violation * 500
+
         # Build objectives based on configured directions
         # pymoo always minimizes, so we negate values we want to maximize
         def apply_direction(values, metric_name):
@@ -247,7 +570,8 @@ def run_nsga2_optimization(
     n_generations: int = 100,
     seed: int = 42,
     fixed_span: Optional[float] = None,
-    allow_unrealistic_taper: bool = False
+    allow_unrealistic_taper: bool = False,
+    geometric_constraints: Optional[Dict] = None
 ) -> Dict[str, Any]:
     """
     Run NSGA-II optimization to find Pareto-optimal designs
@@ -262,6 +586,7 @@ def run_nsga2_optimization(
         seed: Random seed for reproducibility
         fixed_span: If provided, use fixed-span mode with this span value (inches)
         allow_unrealistic_taper: If True, skip taper ratio and bowtie filtering
+        geometric_constraints: Optional dict with angle and taper constraints
 
     Returns:
         Dictionary with optimization results
@@ -275,6 +600,8 @@ def run_nsga2_optimization(
         logger.info(f"Custom objectives: {objectives}")
     if allow_unrealistic_taper:
         logger.info("Allowing unrealistic taper ratios and bowtie geometries")
+    if geometric_constraints:
+        logger.info(f"Geometric constraints: {geometric_constraints}")
 
     # Create problem
     problem = DroneDesignProblem(
@@ -283,13 +610,23 @@ def run_nsga2_optimization(
         user_constraints=user_constraints,
         objectives=objectives,
         fixed_span=fixed_span,
-        allow_unrealistic_taper=allow_unrealistic_taper
+        allow_unrealistic_taper=allow_unrealistic_taper,
+        geometric_constraints=geometric_constraints
     )
 
     # Configure NSGA-II algorithm
+    # Use taper-aware sampling if geometric constraints are present
+    if geometric_constraints:
+        sampling = TaperAwareSampling(
+            geometric_constraints=geometric_constraints,
+            fixed_span=fixed_span
+        )
+    else:
+        sampling = FloatRandomSampling()
+
     algorithm = NSGA2(
         pop_size=population_size,
-        sampling=FloatRandomSampling(),
+        sampling=sampling,
         crossover=SBX(prob=0.9, eta=15),     # Simulated Binary Crossover
         mutation=PM(eta=20),                  # Polynomial Mutation
         eliminate_duplicates=True
@@ -367,20 +704,6 @@ def run_nsga2_optimization(
             te_sweep_p2 = pareto_designs[:, 5]
             panel_break = pareto_designs[:, 6]
 
-        # Taper ratio constraint: TE sweep should be >= LE sweep for each panel
-        # This prevents "negative taper" where chord expands toward the tip
-        # Allow small tolerance (5 degrees) for slightly expanding outer panels
-        MIN_TAPER_DIFF = -5  # Minimum (TE_sweep - LE_sweep), negative allows slight expansion
-        taper_diff_p1 = te_sweep_p1 - le_sweep_p1
-        taper_diff_p2 = te_sweep_p2 - le_sweep_p2
-
-        # Filter out designs with unrealistic taper (especially on outer panel P2)
-        feasible_mask &= (taper_diff_p2 >= MIN_TAPER_DIFF)
-
-        n_taper_filtered = np.sum(~(taper_diff_p2 >= MIN_TAPER_DIFF))
-        if n_taper_filtered > 0:
-            logger.info(f"Filtered {n_taper_filtered} designs with unrealistic outer panel taper ratio")
-
         # Bowtie detection: chord must be positive at panel break and wingtip
         half_span = span / 2
         break_span = half_span * panel_break
@@ -392,16 +715,13 @@ def run_nsga2_optimization(
         te_sweep_p1_rad = np.radians(te_sweep_p1)
         te_sweep_p2_rad = np.radians(te_sweep_p2)
 
-        # LE and TE offsets at panel break (measured from root chord endpoints)
-        le_offset_at_break = np.tan(le_sweep_p1_rad) * break_span
-        te_offset_at_break = np.tan(te_sweep_p1_rad) * break_span
+        # Chord at panel break: LOA - break_span * (tan(LE) - tan(TE))
+        chord_at_break = loa - break_span * (np.tan(le_sweep_p1_rad) - np.tan(te_sweep_p1_rad))
 
-        # Chord at panel break
-        chord_at_break = loa - break_span * (np.tan(le_sweep_p1_rad) + np.tan(te_sweep_p1_rad))
-
-        # Chord at wingtip
-        chord_at_tip = loa - (le_offset_at_break + np.tan(le_sweep_p2_rad) * remaining_span) - \
-                       (te_offset_at_break + np.tan(te_sweep_p2_rad) * remaining_span)
+        # Chord at wingtip: TE_tip - LE_tip
+        le_at_tip = np.tan(le_sweep_p1_rad) * break_span + np.tan(le_sweep_p2_rad) * remaining_span
+        te_at_tip = loa + np.tan(te_sweep_p1_rad) * break_span + np.tan(te_sweep_p2_rad) * remaining_span
+        chord_at_tip = te_at_tip - le_at_tip
 
         # Minimum chord requirement (in inches) - must have at least some positive chord
         MIN_CHORD = 2.0  # 2 inches minimum chord
@@ -415,6 +735,30 @@ def run_nsga2_optimization(
         n_bowtie_filtered = np.sum(bowtie_mask)
         if n_bowtie_filtered > 0:
             logger.info(f"Filtered {n_bowtie_filtered} designs with bowtie geometry (chord < {MIN_CHORD}in)")
+
+        # Unrealistic taper ratio filter: use actual computed taper ratios
+        # taper_p1 = chord_at_break / chord_root (root chord = LOA)
+        # taper_p2 = chord_at_tip / chord_at_break
+        # Filter out designs where taper ratio is too extreme (e.g., < 0.1 or > 1.5)
+        MIN_TAPER_RATIO = 0.1  # No panel should taper to less than 10% of its root
+        MAX_TAPER_RATIO = 1.5  # No panel should expand to more than 150% of its root
+
+        # Only compute taper where chords are positive to avoid division issues
+        valid_chords = (loa > MIN_CHORD) & (chord_at_break > MIN_CHORD) & (chord_at_tip > MIN_CHORD)
+
+        taper_p1 = np.where(valid_chords, chord_at_break / loa, 1.0)
+        taper_p2 = np.where(valid_chords, chord_at_tip / chord_at_break, 1.0)
+
+        unrealistic_taper_mask = (
+            (taper_p1 < MIN_TAPER_RATIO) | (taper_p1 > MAX_TAPER_RATIO) |
+            (taper_p2 < MIN_TAPER_RATIO) | (taper_p2 > MAX_TAPER_RATIO)
+        )
+
+        feasible_mask &= ~unrealistic_taper_mask
+
+        n_taper_filtered = np.sum(unrealistic_taper_mask)
+        if n_taper_filtered > 0:
+            logger.info(f"Filtered {n_taper_filtered} designs with unrealistic taper ratios (outside {MIN_TAPER_RATIO}-{MAX_TAPER_RATIO} range)")
 
     if user_constraints:
         if 'min_range_nm' in user_constraints and user_constraints['min_range_nm'] is not None:
@@ -431,6 +775,98 @@ def run_nsga2_optimization(
 
         if 'max_wingtip_deflection_in' in user_constraints and user_constraints['max_wingtip_deflection_in'] is not None:
             feasible_mask &= (wingtip_deflection_in <= user_constraints['max_wingtip_deflection_in'])
+
+    # Apply geometric constraints as hard filters
+    if geometric_constraints:
+        logger.info(f"Applying geometric constraint hard filters: {geometric_constraints}")
+        # Extract design variables for geometric calculations
+        if fixed_span is not None:
+            loa = pareto_designs[:, 0]
+            span_arr = np.full(len(pareto_designs), fixed_span)
+            le_sweep_p1 = pareto_designs[:, 1]
+            le_sweep_p2 = pareto_designs[:, 2]
+            te_sweep_p1 = pareto_designs[:, 3]
+            te_sweep_p2 = pareto_designs[:, 4]
+            panel_break = pareto_designs[:, 5]
+        else:
+            loa = pareto_designs[:, 0]
+            span_arr = pareto_designs[:, 1]
+            le_sweep_p1 = pareto_designs[:, 2]
+            le_sweep_p2 = pareto_designs[:, 3]
+            te_sweep_p1 = pareto_designs[:, 4]
+            te_sweep_p2 = pareto_designs[:, 5]
+            panel_break = pareto_designs[:, 6]
+
+        # Calculate taper ratios
+        taper_p1, taper_p2 = calculate_taper_ratios(
+            loa, span_arr, le_sweep_p1, le_sweep_p2, te_sweep_p1, te_sweep_p2, panel_break
+        )
+
+        # Taper ratio filters
+        gc = geometric_constraints
+        logger.info(f"Calculated taper ratios - P1 range: [{np.min(taper_p1):.3f}, {np.max(taper_p1):.3f}], P2 range: [{np.min(taper_p2):.3f}, {np.max(taper_p2):.3f}]")
+
+        n_before = np.sum(feasible_mask)
+
+        # Panel 1 taper ratio - fixed value takes precedence over range
+        if gc.get('taper_ratio_p1_fixed') is not None:
+            # Allow tolerance of 0.05 for fixed value
+            target = gc['taper_ratio_p1_fixed']
+            tolerance = 0.05
+            feasible_mask &= (np.abs(taper_p1 - target) <= tolerance)
+            logger.info(f"After taper_ratio_p1_fixed ({target} ± {tolerance}): {np.sum(feasible_mask)}/{n_before} designs remain")
+        else:
+            if gc.get('min_taper_ratio_p1') is not None:
+                feasible_mask &= (taper_p1 >= gc['min_taper_ratio_p1'])
+                logger.info(f"After min_taper_ratio_p1 ({gc['min_taper_ratio_p1']}): {np.sum(feasible_mask)}/{n_before} designs remain")
+            if gc.get('max_taper_ratio_p1') is not None:
+                feasible_mask &= (taper_p1 <= gc['max_taper_ratio_p1'])
+                logger.info(f"After max_taper_ratio_p1 ({gc['max_taper_ratio_p1']}): {np.sum(feasible_mask)}/{n_before} designs remain")
+
+        # Panel 2 taper ratio - fixed value takes precedence over range
+        if gc.get('taper_ratio_p2_fixed') is not None:
+            # Allow tolerance of 0.05 for fixed value
+            target = gc['taper_ratio_p2_fixed']
+            tolerance = 0.05
+            feasible_mask &= (np.abs(taper_p2 - target) <= tolerance)
+            logger.info(f"After taper_ratio_p2_fixed ({target} ± {tolerance}): {np.sum(feasible_mask)}/{n_before} designs remain")
+        else:
+            if gc.get('min_taper_ratio_p2') is not None:
+                feasible_mask &= (taper_p2 >= gc['min_taper_ratio_p2'])
+                logger.info(f"After min_taper_ratio_p2 ({gc['min_taper_ratio_p2']}): {np.sum(feasible_mask)}/{n_before} designs remain")
+            if gc.get('max_taper_ratio_p2') is not None:
+                feasible_mask &= (taper_p2 <= gc['max_taper_ratio_p2'])
+                logger.info(f"After max_taper_ratio_p2 ({gc['max_taper_ratio_p2']}): {np.sum(feasible_mask)}/{n_before} designs remain")
+
+        # Root chord ratio filter - fixed value takes precedence over range
+        root_chord_ratio = loa / span_arr
+        if gc.get('root_chord_ratio_fixed') is not None:
+            # Allow tolerance of 0.05 for fixed value
+            target = gc['root_chord_ratio_fixed']
+            tolerance = 0.05
+            feasible_mask &= (np.abs(root_chord_ratio - target) <= tolerance)
+            logger.info(f"After root_chord_ratio_fixed ({target} ± {tolerance}): {np.sum(feasible_mask)}/{n_before} designs remain")
+        else:
+            if gc.get('min_root_chord_ratio') is not None:
+                feasible_mask &= (root_chord_ratio >= gc['min_root_chord_ratio'])
+            if gc.get('max_root_chord_ratio') is not None:
+                feasible_mask &= (root_chord_ratio <= gc['max_root_chord_ratio'])
+
+        # Panel break filter - fixed values are handled via design variable bounds
+        # but we also apply range filter here if range constraints exist
+        if gc.get('panel_break_fixed') is not None:
+            # For fixed panel break, allow tolerance (handled via bounds, but verify here)
+            target = gc['panel_break_fixed']
+            tolerance = 0.02
+            feasible_mask &= (np.abs(panel_break - target) <= tolerance)
+            logger.info(f"After panel_break_fixed ({target} ± {tolerance}): {np.sum(feasible_mask)}/{n_before} designs remain")
+        else:
+            if gc.get('min_panel_break') is not None:
+                feasible_mask &= (panel_break >= gc['min_panel_break'])
+                logger.info(f"After min_panel_break ({gc['min_panel_break']}): {np.sum(feasible_mask)}/{n_before} designs remain")
+            if gc.get('max_panel_break') is not None:
+                feasible_mask &= (panel_break <= gc['max_panel_break'])
+                logger.info(f"After max_panel_break ({gc['max_panel_break']}): {np.sum(feasible_mask)}/{n_before} designs remain")
 
     # Apply filter
     n_total = len(pareto_designs)

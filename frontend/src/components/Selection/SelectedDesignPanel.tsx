@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Box, Typography, TextField } from '@mui/material'
+import { Box, Typography, TextField, Button } from '@mui/material'
 import type { DesignResult } from '../../types'
 import Planform from '../Visualization/Planform'
+import { launchNtop } from '../../services/api'
 
 interface SelectedDesignPanelProps {
   design: DesignResult | null
@@ -83,6 +84,8 @@ function NavArrowButton({ direction, onClick, disabled }: { direction: 'prev' | 
 export default function SelectedDesignPanel({ design, designIndex, totalDesigns, onNavigate }: SelectedDesignPanelProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState('')
+  const [ntopStatus, setNtopStatus] = useState<{ message: string; color: string } | null>(null)
+  const [isLaunchingNtop, setIsLaunchingNtop] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Handle keyboard navigation
@@ -150,6 +153,36 @@ export default function SelectedDesignPanel({ design, designIndex, totalDesigns,
       onNavigate(designIndex + 1)
     }
   }, [designIndex, totalDesigns, onNavigate])
+
+  const handleLaunchNtop = useCallback(async () => {
+    if (!design) return
+
+    setIsLaunchingNtop(true)
+    setNtopStatus({ message: 'Launching nTop...', color: '#1565c0' })
+
+    try {
+      const response = await launchNtop({
+        run_id: designIndex !== undefined ? `Design ${designIndex + 1}` : undefined,
+        loa: design.loa,
+        span: design.span,
+        le_sweep_p1: design.le_sweep_p1,
+        le_sweep_p2: design.le_sweep_p2,
+        te_sweep_p1: design.te_sweep_p1,
+        te_sweep_p2: design.te_sweep_p2,
+        panel_break: design.panel_break
+      })
+
+      if (response.status === 'ok') {
+        setNtopStatus({ message: response.message, color: '#2e7d32' })
+      } else {
+        setNtopStatus({ message: `Error: ${response.message}`, color: '#c62828' })
+      }
+    } catch (error) {
+      setNtopStatus({ message: 'Failed to launch nTop. Check server connection.', color: '#c62828' })
+    } finally {
+      setIsLaunchingNtop(false)
+    }
+  }, [design, designIndex])
 
   if (!design) {
     return (
@@ -281,6 +314,45 @@ export default function SelectedDesignPanel({ design, designIndex, totalDesigns,
       {/* Planform visualization */}
       <Box sx={{ mb: 2 }}>
         <Planform design={design} width={350} height={300} />
+      </Box>
+
+      {/* Open in nTop button */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2 }}>
+        <Button
+          variant="contained"
+          onClick={handleLaunchNtop}
+          disabled={isLaunchingNtop}
+          sx={{
+            bgcolor: '#2e7d32',
+            color: 'white',
+            fontFamily: "'Courier New', monospace",
+            textTransform: 'none',
+            px: 3,
+            py: 1,
+            '&:hover': {
+              bgcolor: '#1b5e20'
+            },
+            '&:disabled': {
+              bgcolor: '#81c784',
+              color: 'white'
+            }
+          }}
+        >
+          {isLaunchingNtop ? 'Launching...' : 'Open in nTop'}
+        </Button>
+        {ntopStatus && (
+          <Typography
+            sx={{
+              mt: 1,
+              fontSize: '0.85em',
+              color: ntopStatus.color,
+              fontFamily: 'monospace',
+              textAlign: 'center'
+            }}
+          >
+            {ntopStatus.message}
+          </Typography>
+        )}
       </Box>
 
       {/* Metrics grid */}
