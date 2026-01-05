@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
 
-from app.api import predict, optimize, health, sensitivity
+from app.api import predict, optimize, health, sensitivity, ntop
 from app.core.model_manager import ModelManager
 from app.core.config import settings
 
@@ -81,6 +81,7 @@ app.include_router(health.router, tags=["health"])
 app.include_router(predict.router, prefix="/api", tags=["prediction"])
 app.include_router(optimize.router, prefix="/api", tags=["optimization"])
 app.include_router(sensitivity.router, prefix="/api", tags=["sensitivity"])
+app.include_router(ntop.router, prefix="/api", tags=["ntop"])
 
 
 @app.get("/")

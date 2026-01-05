@@ -46,6 +46,9 @@ function PlanformOverlay({ designs, colors, width = 400, height = 300 }: Planfor
     const remainingSpan = halfSpan - breakSpan
 
     // Convert sweep angles to Y offsets
+    // Positive LE sweep = leading edge moves aft (down in view, +Y offset)
+    // Positive TE sweep = trailing edge moves aft (down in view, +Y offset from root TE)
+    // Negative TE sweep = trailing edge moves forward (up in view, -Y offset from root TE)
     const leOffset1 = Math.tan((le_sweep_p1 * Math.PI) / 180) * breakSpan * scale
     const leOffset2 = leOffset1 + Math.tan((le_sweep_p2 * Math.PI) / 180) * remainingSpan * scale
     let teOffset1 = Math.tan((te_sweep_p1 * Math.PI) / 180) * breakSpan * scale
@@ -55,30 +58,33 @@ function PlanformOverlay({ designs, colors, width = 400, height = 300 }: Planfor
     const noseY = centerY - loaScaled / 2
 
     // Apply 2" gap constraint to prevent bowtie
+    // With convention: TE Y = noseY + loaScaled + teOffset
+    // Chord at break = loaScaled + teOffset1 - leOffset1
     const MIN_GAP = 2.0
-    const breakLEY = noseY + leOffset1
-    const breakTEY = noseY + loaScaled - teOffset1
-    if (breakTEY - breakLEY < MIN_GAP * scale) {
-      teOffset1 = loaScaled - leOffset1 - MIN_GAP * scale
+    const chordAtBreak = loaScaled + teOffset1 - leOffset1
+    if (chordAtBreak < MIN_GAP * scale) {
+      teOffset1 = leOffset1 - loaScaled + MIN_GAP * scale
       teOffset2 = teOffset1 + Math.tan((te_sweep_p2 * Math.PI) / 180) * remainingSpan * scale
     }
 
-    const tipLEY = noseY + leOffset2
-    const tipTEY = noseY + loaScaled - teOffset2
-    if (tipTEY - tipLEY < MIN_GAP * scale) {
-      teOffset2 = loaScaled - leOffset2 - MIN_GAP * scale
+    // Chord at tip = loaScaled + teOffset2 - leOffset2
+    const chordAtTip = loaScaled + teOffset2 - leOffset2
+    if (chordAtTip < MIN_GAP * scale) {
+      teOffset2 = leOffset2 - loaScaled + MIN_GAP * scale
     }
 
     const scaledBreakSpan = breakSpan * scale
     const scaledHalfSpan = halfSpan * scale
 
     // Build path for both wings
+    // TE Y position = root TE (noseY + loaScaled) + teOffset
+    // Positive teOffset = TE moves aft (down), negative teOffset = TE moves forward (up)
     const rightPoints = [
       `${centerX},${noseY}`,
       `${centerX + scaledBreakSpan},${noseY + leOffset1}`,
       `${centerX + scaledHalfSpan},${noseY + leOffset2}`,
-      `${centerX + scaledHalfSpan},${noseY + loaScaled - teOffset2}`,
-      `${centerX + scaledBreakSpan},${noseY + loaScaled - teOffset1}`,
+      `${centerX + scaledHalfSpan},${noseY + loaScaled + teOffset2}`,
+      `${centerX + scaledBreakSpan},${noseY + loaScaled + teOffset1}`,
       `${centerX},${noseY + loaScaled}`
     ].join(' ')
 
@@ -86,8 +92,8 @@ function PlanformOverlay({ designs, colors, width = 400, height = 300 }: Planfor
       `${centerX},${noseY}`,
       `${centerX - scaledBreakSpan},${noseY + leOffset1}`,
       `${centerX - scaledHalfSpan},${noseY + leOffset2}`,
-      `${centerX - scaledHalfSpan},${noseY + loaScaled - teOffset2}`,
-      `${centerX - scaledBreakSpan},${noseY + loaScaled - teOffset1}`,
+      `${centerX - scaledHalfSpan},${noseY + loaScaled + teOffset2}`,
+      `${centerX - scaledBreakSpan},${noseY + loaScaled + teOffset1}`,
       `${centerX},${noseY + loaScaled}`
     ].join(' ')
 

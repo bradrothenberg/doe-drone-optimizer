@@ -42,20 +42,88 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
 
         # Extract constraints
         constraints_dict = {}
+        geometric_constraints = {}
         allow_unrealistic_taper = False
+
         if request_data.constraints:
-            if request_data.constraints.min_range_nm is not None:
-                constraints_dict['min_range_nm'] = request_data.constraints.min_range_nm
-            if request_data.constraints.max_cost_usd is not None:
-                constraints_dict['max_cost_usd'] = request_data.constraints.max_cost_usd
-            if request_data.constraints.max_mtow_lbm is not None:
-                constraints_dict['max_mtow_lbm'] = request_data.constraints.max_mtow_lbm
-            if request_data.constraints.min_endurance_hr is not None:
-                constraints_dict['min_endurance_hr'] = request_data.constraints.min_endurance_hr
-            if request_data.constraints.max_wingtip_deflection_in is not None:
-                constraints_dict['max_wingtip_deflection_in'] = request_data.constraints.max_wingtip_deflection_in
+            c = request_data.constraints
+
+            # Performance constraints
+            if c.min_range_nm is not None:
+                constraints_dict['min_range_nm'] = c.min_range_nm
+            if c.max_cost_usd is not None:
+                constraints_dict['max_cost_usd'] = c.max_cost_usd
+            if c.max_mtow_lbm is not None:
+                constraints_dict['max_mtow_lbm'] = c.max_mtow_lbm
+            if c.min_endurance_hr is not None:
+                constraints_dict['min_endurance_hr'] = c.min_endurance_hr
+            if c.max_wingtip_deflection_in is not None:
+                constraints_dict['max_wingtip_deflection_in'] = c.max_wingtip_deflection_in
+
+            # Taper ratio constraints
+            if c.taper_ratio_p1_fixed is not None:
+                geometric_constraints['taper_ratio_p1_fixed'] = c.taper_ratio_p1_fixed
+            if c.min_taper_ratio_p1 is not None:
+                geometric_constraints['min_taper_ratio_p1'] = c.min_taper_ratio_p1
+            if c.max_taper_ratio_p1 is not None:
+                geometric_constraints['max_taper_ratio_p1'] = c.max_taper_ratio_p1
+            if c.taper_ratio_p2_fixed is not None:
+                geometric_constraints['taper_ratio_p2_fixed'] = c.taper_ratio_p2_fixed
+            if c.min_taper_ratio_p2 is not None:
+                geometric_constraints['min_taper_ratio_p2'] = c.min_taper_ratio_p2
+            if c.max_taper_ratio_p2 is not None:
+                geometric_constraints['max_taper_ratio_p2'] = c.max_taper_ratio_p2
+
+            # Angle constraints - LE Sweep P1
+            if c.le_sweep_p1_fixed is not None:
+                geometric_constraints['le_sweep_p1_fixed'] = c.le_sweep_p1_fixed
+            if c.le_sweep_p1_min is not None:
+                geometric_constraints['le_sweep_p1_min'] = c.le_sweep_p1_min
+            if c.le_sweep_p1_max is not None:
+                geometric_constraints['le_sweep_p1_max'] = c.le_sweep_p1_max
+
+            # Angle constraints - LE Sweep P2
+            if c.le_sweep_p2_fixed is not None:
+                geometric_constraints['le_sweep_p2_fixed'] = c.le_sweep_p2_fixed
+            if c.le_sweep_p2_min is not None:
+                geometric_constraints['le_sweep_p2_min'] = c.le_sweep_p2_min
+            if c.le_sweep_p2_max is not None:
+                geometric_constraints['le_sweep_p2_max'] = c.le_sweep_p2_max
+
+            # Angle constraints - TE Sweep P1
+            if c.te_sweep_p1_fixed is not None:
+                geometric_constraints['te_sweep_p1_fixed'] = c.te_sweep_p1_fixed
+            if c.te_sweep_p1_min is not None:
+                geometric_constraints['te_sweep_p1_min'] = c.te_sweep_p1_min
+            if c.te_sweep_p1_max is not None:
+                geometric_constraints['te_sweep_p1_max'] = c.te_sweep_p1_max
+
+            # Angle constraints - TE Sweep P2
+            if c.te_sweep_p2_fixed is not None:
+                geometric_constraints['te_sweep_p2_fixed'] = c.te_sweep_p2_fixed
+            if c.te_sweep_p2_min is not None:
+                geometric_constraints['te_sweep_p2_min'] = c.te_sweep_p2_min
+            if c.te_sweep_p2_max is not None:
+                geometric_constraints['te_sweep_p2_max'] = c.te_sweep_p2_max
+
+            # Root chord ratio constraints
+            if c.root_chord_ratio_fixed is not None:
+                geometric_constraints['root_chord_ratio_fixed'] = c.root_chord_ratio_fixed
+            if c.min_root_chord_ratio is not None:
+                geometric_constraints['min_root_chord_ratio'] = c.min_root_chord_ratio
+            if c.max_root_chord_ratio is not None:
+                geometric_constraints['max_root_chord_ratio'] = c.max_root_chord_ratio
+
+            # Panel break constraints
+            if c.panel_break_fixed is not None:
+                geometric_constraints['panel_break_fixed'] = c.panel_break_fixed
+            if c.min_panel_break is not None:
+                geometric_constraints['min_panel_break'] = c.min_panel_break
+            if c.max_panel_break is not None:
+                geometric_constraints['max_panel_break'] = c.max_panel_break
+
             # Extract allow_unrealistic_taper flag
-            allow_unrealistic_taper = request_data.constraints.allow_unrealistic_taper
+            allow_unrealistic_taper = c.allow_unrealistic_taper
 
         # Extract objectives (optimization directions)
         objectives_dict = None
@@ -63,6 +131,8 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
             objectives_dict = request_data.objectives.to_dict()
 
         logger.info(f"Running optimization with constraints: {constraints_dict}")
+        if geometric_constraints:
+            logger.info(f"Geometric constraints: {geometric_constraints}")
         if objectives_dict:
             logger.info(f"Custom objectives: {objectives_dict}")
 
@@ -99,7 +169,8 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                 n_generations=request_data.n_generations,
                 seed=42,
                 fixed_span=fixed_span,
-                allow_unrealistic_taper=allow_unrealistic_taper
+                allow_unrealistic_taper=allow_unrealistic_taper,
+                geometric_constraints=geometric_constraints if geometric_constraints else None
             )
 
             feasible = True
@@ -129,7 +200,8 @@ async def optimize_designs(request_data: OptimizeRequest, request: Request):
                         n_generations=request_data.n_generations,
                         seed=42,
                         fixed_span=fixed_span,
-                        allow_unrealistic_taper=allow_unrealistic_taper
+                        allow_unrealistic_taper=allow_unrealistic_taper,
+                        geometric_constraints=geometric_constraints if geometric_constraints else None
                     )
 
                     constraint_relaxation_applied = {

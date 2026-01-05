@@ -2,6 +2,6 @@
 API endpoints for DOE Drone Design Optimizer
 """
 
-from . import health, predict, optimize
+from . import health, predict, optimize, ntop
 
-__all__ = ["health", "predict", "optimize"]
+__all__ = ["health", "predict", "optimize", "ntop"]

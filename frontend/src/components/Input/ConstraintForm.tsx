@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Box, Button, Slider, Typography, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel, Tooltip } from '@mui/material'
+import { Box, Button, Slider, Typography, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel, Tooltip, Collapse, TextField, Select, MenuItem, InputAdornment } from '@mui/material'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import type { Constraints, OptimizationObjectives, OptimizationDirection } from '../../types'
 
 interface ConstraintFormProps {
@@ -87,9 +89,9 @@ const metricConfigs: MetricConfig[] = [
     constraintKey: 'max_wingtip_deflection_in',
     constraintType: 'max',
     sliderMin: 0,
-    sliderMax: 100,
-    sliderStep: 1,
-    sliderDefault: 30
+    sliderMax: 2,
+    sliderStep: 0.05,
+    sliderDefault: 1.0
   }
 ]
 
@@ -121,7 +123,7 @@ const presets: Record<string, PresetConfig> = {
       min_endurance_hr: 15,
       max_mtow_lbm: 5000,
       max_cost_usd: 50000,
-      max_wingtip_deflection_in: 40
+      max_wingtip_deflection_in: 1.5
     }
   },
   'Low Cost': {
@@ -144,7 +146,7 @@ const presets: Record<string, PresetConfig> = {
       min_endurance_hr: 5,
       max_mtow_lbm: undefined,
       max_cost_usd: undefined,
-      max_wingtip_deflection_in: 25
+      max_wingtip_deflection_in: 0.8
     }
   },
   'Balanced': {
@@ -167,7 +169,7 @@ const presets: Record<string, PresetConfig> = {
       min_endurance_hr: 8,
       max_mtow_lbm: 3000,
       max_cost_usd: 35000,
-      max_wingtip_deflection_in: 30
+      max_wingtip_deflection_in: 1.0
     }
   }
 }
@@ -195,9 +197,56 @@ const defaultObjectives: OptimizationObjectives = {
   wingtip_deflection_in: 'minimize'
 }
 
+// Constraint mode type (applies to angles, taper ratios, root chord, panel break)
+type ConstraintMode = 'fixed' | 'range'
+
+// Generic constraint configuration for UI
+interface ConstraintConfig {
+  key: string
+  label: string
+  fixedKey: keyof Constraints
+  minKey: keyof Constraints
+  maxKey: keyof Constraints
+  defaultValue: number
+  defaultMin: number
+  defaultMax: number
+  min: number
+  max: number
+  step: number
+  unit?: string
+}
+
+// Angle configurations
+const angleConfigs: ConstraintConfig[] = [
+  { key: 'le_sweep_p1', label: 'LE Sweep P1', fixedKey: 'le_sweep_p1_fixed', minKey: 'le_sweep_p1_min', maxKey: 'le_sweep_p1_max', defaultValue: 30, defaultMin: 0, defaultMax: 65, min: 0, max: 65, step: 1, unit: '°' },
+  { key: 'le_sweep_p2', label: 'LE Sweep P2', fixedKey: 'le_sweep_p2_fixed', minKey: 'le_sweep_p2_min', maxKey: 'le_sweep_p2_max', defaultValue: 40, defaultMin: 0, defaultMax: 65, min: 0, max: 65, step: 1, unit: '°' },
+  { key: 'te_sweep_p1', label: 'TE Sweep P1', fixedKey: 'te_sweep_p1_fixed', minKey: 'te_sweep_p1_min', maxKey: 'te_sweep_p1_max', defaultValue: 0, defaultMin: -60, defaultMax: 60, min: -60, max: 60, step: 1, unit: '°' },
+  { key: 'te_sweep_p2', label: 'TE Sweep P2', fixedKey: 'te_sweep_p2_fixed', minKey: 'te_sweep_p2_min', maxKey: 'te_sweep_p2_max', defaultValue: 10, defaultMin: -60, defaultMax: 60, min: -60, max: 60, step: 1, unit: '°' },
+]
+
+// Taper ratio configurations
+const taperConfigs: ConstraintConfig[] = [
+  { key: 'taper_ratio_p1', label: 'Panel 1', fixedKey: 'taper_ratio_p1_fixed', minKey: 'min_taper_ratio_p1', maxKey: 'max_taper_ratio_p1', defaultValue: 0.5, defaultMin: 0.1, defaultMax: 1.0, min: 0.1, max: 1.5, step: 0.05 },
+  { key: 'taper_ratio_p2', label: 'Panel 2', fixedKey: 'taper_ratio_p2_fixed', minKey: 'min_taper_ratio_p2', maxKey: 'max_taper_ratio_p2', defaultValue: 0.5, defaultMin: 0.1, defaultMax: 0.8, min: 0.1, max: 1.5, step: 0.05 },
+]
+
+// Root chord ratio configuration
+const rootChordConfig: ConstraintConfig = {
+  key: 'root_chord_ratio', label: 'Chord/Span', fixedKey: 'root_chord_ratio_fixed', minKey: 'min_root_chord_ratio', maxKey: 'max_root_chord_ratio', defaultValue: 0.9, defaultMin: 0.8, defaultMax: 1.2, min: 0.3, max: 2.0, step: 0.05
+}
+
+// Panel break configuration
+const panelBreakConfig: ConstraintConfig = {
+  key: 'panel_break', label: 'Panel Break %', fixedKey: 'panel_break_fixed', minKey: 'min_panel_break', maxKey: 'max_panel_break', defaultValue: 0.4, defaultMin: 0.2, defaultMax: 0.5, min: 0.1, max: 0.65, step: 0.05
+}
+
 export default function ConstraintForm({ constraints, objectives, onUpdate, isOptimizing, hasResults }: ConstraintFormProps) {
   // Local state for immediate feedback
-  const [localConstraints, setLocalConstraints] = useState<Constraints>(constraints)
+  // Default allow_unrealistic_taper to true for better optimization results
+  const [localConstraints, setLocalConstraints] = useState<Constraints>({
+    ...constraints,
+    allow_unrealistic_taper: constraints.allow_unrealistic_taper ?? true
+  })
   const [localObjectives, setLocalObjectives] = useState<OptimizationObjectives>({ ...defaultObjectives, ...objectives })
   const [localModes, setLocalModes] = useState<Record<string, MetricMode>>(() => {
     const modes: Record<string, MetricMode> = {}
@@ -215,9 +264,50 @@ export default function ConstraintForm({ constraints, objectives, onUpdate, isOp
   })
   const [hasChanges, setHasChanges] = useState(false)
 
+  // Geometric constraints state
+  const [geometricExpanded, setGeometricExpanded] = useState(true)
+
+  // Taper ratio enabled state and modes (default ON with Range)
+  const [taperEnabled, setTaperEnabled] = useState<Record<string, boolean>>({
+    taper_ratio_p1: true,
+    taper_ratio_p2: true
+  })
+  const [taperModes, setTaperModes] = useState<Record<string, ConstraintMode>>({
+    taper_ratio_p1: 'range',
+    taper_ratio_p2: 'range'
+  })
+
+  // Angle enabled states and modes (default OFF with Fixed)
+  const [angleEnabled, setAngleEnabled] = useState<Record<string, boolean>>({
+    le_sweep_p1: false,
+    le_sweep_p2: false,
+    te_sweep_p1: false,
+    te_sweep_p2: false
+  })
+  const [angleModes, setAngleModes] = useState<Record<string, ConstraintMode>>({
+    le_sweep_p1: 'fixed',
+    le_sweep_p2: 'fixed',
+    te_sweep_p1: 'fixed',
+    te_sweep_p2: 'fixed'
+  })
+
+  // Root chord ratio enabled state and mode (default OFF with Range)
+  const [rootChordEnabled, setRootChordEnabled] = useState(false)
+  const [rootChordMode, setRootChordMode] = useState<ConstraintMode>('range')
+
+  // Panel break enabled state and mode (default OFF with Range)
+  const [panelBreakEnabled, setPanelBreakEnabled] = useState(false)
+  const [panelBreakMode, setPanelBreakMode] = useState<ConstraintMode>('range')
+
+  // Advanced options expanded state (default collapsed)
+  const [advancedExpanded, setAdvancedExpanded] = useState(false)
+
   // Sync local state when external props change
   useEffect(() => {
-    setLocalConstraints(constraints)
+    setLocalConstraints({
+      ...constraints,
+      allow_unrealistic_taper: constraints.allow_unrealistic_taper ?? true
+    })
     setLocalObjectives({ ...defaultObjectives, ...objectives })
     const modes: Record<string, MetricMode> = {}
     metricConfigs.forEach(config => {
@@ -339,7 +429,7 @@ export default function ConstraintForm({ constraints, objectives, onUpdate, isOp
       max_mtow_lbm: undefined,
       min_endurance_hr: undefined,
       max_wingtip_deflection_in: undefined,
-      allow_unrealistic_taper: false
+      allow_unrealistic_taper: true  // Default to true for better optimization results
     }
     const defaultModes: Record<string, MetricMode> = {}
     const allEnabled: Record<string, boolean> = {}
@@ -358,6 +448,258 @@ export default function ConstraintForm({ constraints, objectives, onUpdate, isOp
     const newConstraints = { ...localConstraints, allow_unrealistic_taper: checked }
     setLocalConstraints(newConstraints)
     checkForChanges(newConstraints, localObjectives, localModes)
+  }
+
+  // Generic constraint value change handler
+  const handleConstraintValueChange = (key: keyof Constraints, value: string) => {
+    const numValue = value === '' ? undefined : parseFloat(value)
+    const newConstraints = { ...localConstraints, [key]: numValue }
+    setLocalConstraints(newConstraints)
+    checkForChanges(newConstraints, localObjectives, localModes)
+  }
+
+  // Taper ratio handlers
+  const handleTaperEnabledChange = (taperKey: string, checked: boolean) => {
+    setTaperEnabled(prev => ({ ...prev, [taperKey]: checked }))
+    const config = taperConfigs.find(c => c.key === taperKey)!
+    if (!checked) {
+      const newConstraints = {
+        ...localConstraints,
+        [config.fixedKey]: undefined,
+        [config.minKey]: undefined,
+        [config.maxKey]: undefined
+      }
+      setLocalConstraints(newConstraints)
+      checkForChanges(newConstraints, localObjectives, localModes)
+    } else {
+      // Set default values based on current mode
+      const mode = taperModes[taperKey]
+      let newConstraints: Constraints
+      if (mode === 'fixed') {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: config.defaultValue,
+          [config.minKey]: undefined,
+          [config.maxKey]: undefined
+        }
+      } else {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: undefined,
+          [config.minKey]: config.defaultMin,
+          [config.maxKey]: config.defaultMax
+        }
+      }
+      setLocalConstraints(newConstraints)
+      checkForChanges(newConstraints, localObjectives, localModes)
+    }
+  }
+
+  const handleTaperModeChange = (taperKey: string, mode: ConstraintMode) => {
+    setTaperModes(prev => ({ ...prev, [taperKey]: mode }))
+    const config = taperConfigs.find(c => c.key === taperKey)!
+    if (taperEnabled[taperKey]) {
+      let newConstraints: Constraints
+      if (mode === 'fixed') {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: config.defaultValue,
+          [config.minKey]: undefined,
+          [config.maxKey]: undefined
+        }
+      } else {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: undefined,
+          [config.minKey]: config.defaultMin,
+          [config.maxKey]: config.defaultMax
+        }
+      }
+      setLocalConstraints(newConstraints)
+      checkForChanges(newConstraints, localObjectives, localModes)
+    }
+  }
+
+  // Angle handlers
+  const handleAngleEnabledChange = (angleKey: string, checked: boolean) => {
+    setAngleEnabled(prev => ({ ...prev, [angleKey]: checked }))
+    const config = angleConfigs.find(c => c.key === angleKey)!
+    if (!checked) {
+      const newConstraints = {
+        ...localConstraints,
+        [config.fixedKey]: undefined,
+        [config.minKey]: undefined,
+        [config.maxKey]: undefined
+      }
+      setLocalConstraints(newConstraints)
+      checkForChanges(newConstraints, localObjectives, localModes)
+    } else {
+      // Set default values based on current mode
+      const mode = angleModes[angleKey]
+      let newConstraints: Constraints
+      if (mode === 'fixed') {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: config.defaultValue,
+          [config.minKey]: undefined,
+          [config.maxKey]: undefined
+        }
+      } else {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: undefined,
+          [config.minKey]: config.defaultMin,
+          [config.maxKey]: config.defaultMax
+        }
+      }
+      setLocalConstraints(newConstraints)
+      checkForChanges(newConstraints, localObjectives, localModes)
+    }
+  }
+
+  const handleAngleModeChange = (angleKey: string, mode: ConstraintMode) => {
+    setAngleModes(prev => ({ ...prev, [angleKey]: mode }))
+    const config = angleConfigs.find(c => c.key === angleKey)!
+    if (angleEnabled[angleKey]) {
+      let newConstraints: Constraints
+      if (mode === 'fixed') {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: config.defaultValue,
+          [config.minKey]: undefined,
+          [config.maxKey]: undefined
+        }
+      } else {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: undefined,
+          [config.minKey]: config.defaultMin,
+          [config.maxKey]: config.defaultMax
+        }
+      }
+      setLocalConstraints(newConstraints)
+      checkForChanges(newConstraints, localObjectives, localModes)
+    }
+  }
+
+  // Root chord ratio handlers
+  const handleRootChordEnabledChange = (checked: boolean) => {
+    setRootChordEnabled(checked)
+    const config = rootChordConfig
+    if (!checked) {
+      const newConstraints = {
+        ...localConstraints,
+        [config.fixedKey]: undefined,
+        [config.minKey]: undefined,
+        [config.maxKey]: undefined
+      }
+      setLocalConstraints(newConstraints)
+      checkForChanges(newConstraints, localObjectives, localModes)
+    } else {
+      let newConstraints: Constraints
+      if (rootChordMode === 'fixed') {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: config.defaultValue,
+          [config.minKey]: undefined,
+          [config.maxKey]: undefined
+        }
+      } else {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: undefined,
+          [config.minKey]: config.defaultMin,
+          [config.maxKey]: config.defaultMax
+        }
+      }
+      setLocalConstraints(newConstraints)
+      checkForChanges(newConstraints, localObjectives, localModes)
+    }
+  }
+
+  const handleRootChordModeChange = (mode: ConstraintMode) => {
+    setRootChordMode(mode)
+    const config = rootChordConfig
+    if (rootChordEnabled) {
+      let newConstraints: Constraints
+      if (mode === 'fixed') {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: config.defaultValue,
+          [config.minKey]: undefined,
+          [config.maxKey]: undefined
+        }
+      } else {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: undefined,
+          [config.minKey]: config.defaultMin,
+          [config.maxKey]: config.defaultMax
+        }
+      }
+      setLocalConstraints(newConstraints)
+      checkForChanges(newConstraints, localObjectives, localModes)
+    }
+  }
+
+  // Panel break handlers
+  const handlePanelBreakEnabledChange = (checked: boolean) => {
+    setPanelBreakEnabled(checked)
+    const config = panelBreakConfig
+    if (!checked) {
+      const newConstraints = {
+        ...localConstraints,
+        [config.fixedKey]: undefined,
+        [config.minKey]: undefined,
+        [config.maxKey]: undefined
+      }
+      setLocalConstraints(newConstraints)
+      checkForChanges(newConstraints, localObjectives, localModes)
+    } else {
+      let newConstraints: Constraints
+      if (panelBreakMode === 'fixed') {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: config.defaultValue,
+          [config.minKey]: undefined,
+          [config.maxKey]: undefined
+        }
+      } else {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: undefined,
+          [config.minKey]: config.defaultMin,
+          [config.maxKey]: config.defaultMax
+        }
+      }
+      setLocalConstraints(newConstraints)
+      checkForChanges(newConstraints, localObjectives, localModes)
+    }
+  }
+
+  const handlePanelBreakModeChange = (mode: ConstraintMode) => {
+    setPanelBreakMode(mode)
+    const config = panelBreakConfig
+    if (panelBreakEnabled) {
+      let newConstraints: Constraints
+      if (mode === 'fixed') {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: config.defaultValue,
+          [config.minKey]: undefined,
+          [config.maxKey]: undefined
+        }
+      } else {
+        newConstraints = {
+          ...localConstraints,
+          [config.fixedKey]: undefined,
+          [config.minKey]: config.defaultMin,
+          [config.maxKey]: config.defaultMax
+        }
+      }
+      setLocalConstraints(newConstraints)
+      checkForChanges(newConstraints, localObjectives, localModes)
+    }
   }
 
   const handleRunOptimization = () => {
@@ -613,7 +955,11 @@ export default function ConstraintForm({ constraints, objectives, onUpdate, isOp
                       textAlign: 'right'
                     }}
                   >
-                    {config.constraintType === 'min' ? '≥' : '≤'} {(constraintValue ?? config.sliderDefault).toLocaleString()}
+                    {config.constraintType === 'min' ? '≥' : '≤'} {
+                      config.sliderStep < 1
+                        ? (constraintValue ?? config.sliderDefault).toFixed(2)
+                        : (constraintValue ?? config.sliderDefault).toLocaleString()
+                    }
                   </Typography>
                 </>
               ) : (
@@ -636,52 +982,504 @@ export default function ConstraintForm({ constraints, objectives, onUpdate, isOp
         })}
       </Box>
 
-      {/* Advanced Options */}
+      {/* Geometric Constraints - Collapsible Section */}
       <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid #e0e0e0' }}>
-        <Typography
+        <Box
+          onClick={() => setGeometricExpanded(!geometricExpanded)}
           sx={{
-            fontFamily: 'monospace',
-            fontSize: '0.85em',
-            color: '#666666',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
             mb: 1,
-            fontWeight: 500
+            '&:hover': { bgcolor: '#f0f0f0' },
+            p: 0.5,
+            mx: -0.5,
+            borderRadius: 1
           }}
         >
-          Advanced Options
-        </Typography>
-        <Tooltip
-          title="When enabled, allows wing geometries with expanding chord sections or very thin tips. These designs may be structurally challenging to manufacture."
-          placement="right"
-          arrow
-        >
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={localConstraints.allow_unrealistic_taper ?? false}
-                onChange={(e) => handleAllowUnrealisticTaperChange(e.target.checked)}
-                disabled={isOptimizing}
-                size="small"
-                sx={{
-                  color: '#666666',
-                  '&.Mui-checked': {
-                    color: '#ff5722'
-                  }
-                }}
-              />
-            }
-            label={
+          <Typography
+            sx={{
+              fontFamily: 'monospace',
+              fontSize: '0.95em',
+              color: '#333333',
+              fontWeight: 600
+            }}
+          >
+            Geometric Constraints
+          </Typography>
+          {geometricExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+        </Box>
+
+        <Collapse in={geometricExpanded}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, py: 1 }}>
+
+            {/* LOA (Root Chord) Section - moved to top */}
+            <Box>
               <Typography
                 sx={{
                   fontFamily: 'monospace',
-                  fontSize: '0.85em',
-                  color: localConstraints.allow_unrealistic_taper ? '#ff5722' : '#666666'
+                  fontSize: '0.8em',
+                  color: '#666666',
+                  mb: 1,
+                  fontWeight: 500
                 }}
               >
-                Allow unrealistic taper ratios
+                LOA (ratio to span)
               </Typography>
-            }
-          />
-        </Tooltip>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: '32px 100px 80px 1fr',
+                  gap: 1,
+                  alignItems: 'center',
+                  opacity: rootChordEnabled ? 1 : 0.5
+                }}
+              >
+                <Checkbox
+                  checked={rootChordEnabled}
+                  onChange={(e) => handleRootChordEnabledChange(e.target.checked)}
+                  disabled={isOptimizing}
+                  size="small"
+                  sx={{ p: 0 }}
+                />
+                <Typography sx={{ fontFamily: 'monospace', fontSize: '0.85em' }}>
+                  LOA/Span ratio
+                </Typography>
+                <Select
+                  size="small"
+                  value={rootChordMode}
+                  onChange={(e) => handleRootChordModeChange(e.target.value as ConstraintMode)}
+                  disabled={isOptimizing || !rootChordEnabled}
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.8em',
+                    '& .MuiSelect-select': { py: 0.5 }
+                  }}
+                >
+                  <MenuItem value="fixed" sx={{ fontFamily: 'monospace', fontSize: '0.85em' }}>Fixed</MenuItem>
+                  <MenuItem value="range" sx={{ fontFamily: 'monospace', fontSize: '0.85em' }}>Range</MenuItem>
+                </Select>
+
+                {rootChordMode === 'fixed' ? (
+                  <TextField
+                    size="small"
+                    type="number"
+                    value={localConstraints.root_chord_ratio_fixed ?? ''}
+                    onChange={(e) => handleConstraintValueChange('root_chord_ratio_fixed', e.target.value)}
+                    disabled={isOptimizing || !rootChordEnabled}
+                    placeholder="Value"
+                    inputProps={{ min: rootChordConfig.min, max: rootChordConfig.max, step: rootChordConfig.step }}
+                    sx={{
+                      width: 100,
+                      '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85em', py: 0.5 }
+                    }}
+                  />
+                ) : (
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={localConstraints.min_root_chord_ratio ?? ''}
+                      onChange={(e) => handleConstraintValueChange('min_root_chord_ratio', e.target.value)}
+                      disabled={isOptimizing || !rootChordEnabled}
+                      placeholder="Min"
+                      inputProps={{ min: rootChordConfig.min, max: rootChordConfig.max, step: rootChordConfig.step }}
+                      sx={{
+                        width: 70,
+                        '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85em', py: 0.5 }
+                      }}
+                    />
+                    <Typography sx={{ fontFamily: 'monospace', fontSize: '0.85em', color: '#666' }}>—</Typography>
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={localConstraints.max_root_chord_ratio ?? ''}
+                      onChange={(e) => handleConstraintValueChange('max_root_chord_ratio', e.target.value)}
+                      disabled={isOptimizing || !rootChordEnabled}
+                      placeholder="Max"
+                      inputProps={{ min: rootChordConfig.min, max: rootChordConfig.max, step: rootChordConfig.step }}
+                      sx={{
+                        width: 70,
+                        '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85em', py: 0.5 }
+                      }}
+                    />
+                  </Box>
+                )}
+              </Box>
+            </Box>
+
+            {/* Taper Ratios Section */}
+            <Box>
+              <Typography
+                sx={{
+                  fontFamily: 'monospace',
+                  fontSize: '0.8em',
+                  color: '#666666',
+                  mb: 1,
+                  fontWeight: 500
+                }}
+              >
+                Taper Ratios (tip chord / root chord)
+              </Typography>
+
+              {taperConfigs.map((config) => (
+                <Box
+                  key={config.key}
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: '32px 100px 80px 1fr',
+                    gap: 1,
+                    alignItems: 'center',
+                    mb: 1,
+                    opacity: taperEnabled[config.key] ? 1 : 0.5
+                  }}
+                >
+                  <Checkbox
+                    checked={taperEnabled[config.key]}
+                    onChange={(e) => handleTaperEnabledChange(config.key, e.target.checked)}
+                    disabled={isOptimizing}
+                    size="small"
+                    sx={{ p: 0 }}
+                  />
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: '0.85em' }}>
+                    {config.label}
+                  </Typography>
+                  <Select
+                    size="small"
+                    value={taperModes[config.key]}
+                    onChange={(e) => handleTaperModeChange(config.key, e.target.value as ConstraintMode)}
+                    disabled={isOptimizing || !taperEnabled[config.key]}
+                    sx={{
+                      fontFamily: 'monospace',
+                      fontSize: '0.8em',
+                      '& .MuiSelect-select': { py: 0.5 }
+                    }}
+                  >
+                    <MenuItem value="fixed" sx={{ fontFamily: 'monospace', fontSize: '0.85em' }}>Fixed</MenuItem>
+                    <MenuItem value="range" sx={{ fontFamily: 'monospace', fontSize: '0.85em' }}>Range</MenuItem>
+                  </Select>
+
+                  {taperModes[config.key] === 'fixed' ? (
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={localConstraints[config.fixedKey] ?? ''}
+                      onChange={(e) => handleConstraintValueChange(config.fixedKey, e.target.value)}
+                      disabled={isOptimizing || !taperEnabled[config.key]}
+                      placeholder="Value"
+                      inputProps={{ min: config.min, max: config.max, step: config.step }}
+                      sx={{
+                        width: 100,
+                        '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85em', py: 0.5 }
+                      }}
+                    />
+                  ) : (
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={localConstraints[config.minKey] ?? ''}
+                        onChange={(e) => handleConstraintValueChange(config.minKey, e.target.value)}
+                        disabled={isOptimizing || !taperEnabled[config.key]}
+                        placeholder="Min"
+                        inputProps={{ min: config.min, max: config.max, step: config.step }}
+                        sx={{
+                          width: 70,
+                          '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85em', py: 0.5 }
+                        }}
+                      />
+                      <Typography sx={{ fontFamily: 'monospace', fontSize: '0.85em', color: '#666' }}>—</Typography>
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={localConstraints[config.maxKey] ?? ''}
+                        onChange={(e) => handleConstraintValueChange(config.maxKey, e.target.value)}
+                        disabled={isOptimizing || !taperEnabled[config.key]}
+                        placeholder="Max"
+                        inputProps={{ min: config.min, max: config.max, step: config.step }}
+                        sx={{
+                          width: 70,
+                          '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85em', py: 0.5 }
+                        }}
+                      />
+                    </Box>
+                  )}
+                </Box>
+              ))}
+            </Box>
+
+            {/* Sweep Angles Section */}
+            <Box>
+              <Typography
+                sx={{
+                  fontFamily: 'monospace',
+                  fontSize: '0.8em',
+                  color: '#666666',
+                  mb: 1,
+                  fontWeight: 500
+                }}
+              >
+                Sweep Angles
+              </Typography>
+
+              {angleConfigs.map((config) => (
+                <Box
+                  key={config.key}
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: '32px 100px 80px 1fr',
+                    gap: 1,
+                    alignItems: 'center',
+                    mb: 1,
+                    opacity: angleEnabled[config.key] ? 1 : 0.5
+                  }}
+                >
+                  <Checkbox
+                    checked={angleEnabled[config.key]}
+                    onChange={(e) => handleAngleEnabledChange(config.key, e.target.checked)}
+                    disabled={isOptimizing}
+                    size="small"
+                    sx={{ p: 0 }}
+                  />
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: '0.85em' }}>
+                    {config.label}
+                  </Typography>
+                  <Select
+                    size="small"
+                    value={angleModes[config.key]}
+                    onChange={(e) => handleAngleModeChange(config.key, e.target.value as ConstraintMode)}
+                    disabled={isOptimizing || !angleEnabled[config.key]}
+                    sx={{
+                      fontFamily: 'monospace',
+                      fontSize: '0.8em',
+                      '& .MuiSelect-select': { py: 0.5 }
+                    }}
+                  >
+                    <MenuItem value="fixed" sx={{ fontFamily: 'monospace', fontSize: '0.85em' }}>Fixed</MenuItem>
+                    <MenuItem value="range" sx={{ fontFamily: 'monospace', fontSize: '0.85em' }}>Range</MenuItem>
+                  </Select>
+
+                  {angleModes[config.key] === 'fixed' ? (
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={localConstraints[config.fixedKey] ?? ''}
+                      onChange={(e) => handleConstraintValueChange(config.fixedKey, e.target.value)}
+                      disabled={isOptimizing || !angleEnabled[config.key]}
+                      placeholder="Value"
+                      inputProps={{ min: config.min, max: config.max, step: config.step }}
+                      InputProps={{
+                        endAdornment: <InputAdornment position="end">{config.unit}</InputAdornment>
+                      }}
+                      sx={{
+                        width: 100,
+                        '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85em', py: 0.5 }
+                      }}
+                    />
+                  ) : (
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={localConstraints[config.minKey] ?? ''}
+                        onChange={(e) => handleConstraintValueChange(config.minKey, e.target.value)}
+                        disabled={isOptimizing || !angleEnabled[config.key]}
+                        placeholder="Min"
+                        inputProps={{ min: config.min, max: config.max, step: config.step }}
+                        sx={{
+                          width: 70,
+                          '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85em', py: 0.5 }
+                        }}
+                      />
+                      <Typography sx={{ fontFamily: 'monospace', fontSize: '0.85em', color: '#666' }}>—</Typography>
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={localConstraints[config.maxKey] ?? ''}
+                        onChange={(e) => handleConstraintValueChange(config.maxKey, e.target.value)}
+                        disabled={isOptimizing || !angleEnabled[config.key]}
+                        placeholder="Max"
+                        inputProps={{ min: config.min, max: config.max, step: config.step }}
+                        InputProps={{
+                          endAdornment: <InputAdornment position="end">{config.unit}</InputAdornment>
+                        }}
+                        sx={{
+                          width: 85,
+                          '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85em', py: 0.5 }
+                        }}
+                      />
+                    </Box>
+                  )}
+                </Box>
+              ))}
+            </Box>
+
+            {/* Panel Break Section */}
+            <Box>
+              <Typography
+                sx={{
+                  fontFamily: 'monospace',
+                  fontSize: '0.8em',
+                  color: '#666666',
+                  mb: 1,
+                  fontWeight: 500
+                }}
+              >
+                Panel Break (fraction of half-span)
+              </Typography>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: '32px 100px 80px 1fr',
+                  gap: 1,
+                  alignItems: 'center',
+                  opacity: panelBreakEnabled ? 1 : 0.5
+                }}
+              >
+                <Checkbox
+                  checked={panelBreakEnabled}
+                  onChange={(e) => handlePanelBreakEnabledChange(e.target.checked)}
+                  disabled={isOptimizing}
+                  size="small"
+                  sx={{ p: 0 }}
+                />
+                <Typography sx={{ fontFamily: 'monospace', fontSize: '0.85em' }}>
+                  Panel Break %
+                </Typography>
+                <Select
+                  size="small"
+                  value={panelBreakMode}
+                  onChange={(e) => handlePanelBreakModeChange(e.target.value as ConstraintMode)}
+                  disabled={isOptimizing || !panelBreakEnabled}
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.8em',
+                    '& .MuiSelect-select': { py: 0.5 }
+                  }}
+                >
+                  <MenuItem value="fixed" sx={{ fontFamily: 'monospace', fontSize: '0.85em' }}>Fixed</MenuItem>
+                  <MenuItem value="range" sx={{ fontFamily: 'monospace', fontSize: '0.85em' }}>Range</MenuItem>
+                </Select>
+
+                {panelBreakMode === 'fixed' ? (
+                  <TextField
+                    size="small"
+                    type="number"
+                    value={localConstraints.panel_break_fixed ?? ''}
+                    onChange={(e) => handleConstraintValueChange('panel_break_fixed', e.target.value)}
+                    disabled={isOptimizing || !panelBreakEnabled}
+                    placeholder="Value"
+                    inputProps={{ min: panelBreakConfig.min, max: panelBreakConfig.max, step: panelBreakConfig.step }}
+                    sx={{
+                      width: 100,
+                      '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85em', py: 0.5 }
+                    }}
+                  />
+                ) : (
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={localConstraints.min_panel_break ?? ''}
+                      onChange={(e) => handleConstraintValueChange('min_panel_break', e.target.value)}
+                      disabled={isOptimizing || !panelBreakEnabled}
+                      placeholder="Min"
+                      inputProps={{ min: panelBreakConfig.min, max: panelBreakConfig.max, step: panelBreakConfig.step }}
+                      sx={{
+                        width: 70,
+                        '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85em', py: 0.5 }
+                      }}
+                    />
+                    <Typography sx={{ fontFamily: 'monospace', fontSize: '0.85em', color: '#666' }}>—</Typography>
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={localConstraints.max_panel_break ?? ''}
+                      onChange={(e) => handleConstraintValueChange('max_panel_break', e.target.value)}
+                      disabled={isOptimizing || !panelBreakEnabled}
+                      placeholder="Max"
+                      inputProps={{ min: panelBreakConfig.min, max: panelBreakConfig.max, step: panelBreakConfig.step }}
+                      sx={{
+                        width: 70,
+                        '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.85em', py: 0.5 }
+                      }}
+                    />
+                  </Box>
+                )}
+              </Box>
+            </Box>
+
+          </Box>
+        </Collapse>
+      </Box>
+
+      {/* Advanced Options - Collapsible Section */}
+      <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid #e0e0e0' }}>
+        <Box
+          onClick={() => setAdvancedExpanded(!advancedExpanded)}
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+            mb: 1,
+            '&:hover': { bgcolor: '#f0f0f0' },
+            p: 0.5,
+            mx: -0.5,
+            borderRadius: 1
+          }}
+        >
+          <Typography
+            sx={{
+              fontFamily: 'monospace',
+              fontSize: '0.85em',
+              color: '#666666',
+              fontWeight: 500
+            }}
+          >
+            Advanced Options
+          </Typography>
+          {advancedExpanded ? <ExpandLessIcon sx={{ color: '#666666' }} /> : <ExpandMoreIcon sx={{ color: '#666666' }} />}
+        </Box>
+
+        <Collapse in={advancedExpanded}>
+          <Tooltip
+            title="When enabled, allows wing geometries with expanding chord sections or very thin tips. These designs may be structurally challenging to manufacture."
+            placement="right"
+            arrow
+          >
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={localConstraints.allow_unrealistic_taper ?? true}
+                  onChange={(e) => handleAllowUnrealisticTaperChange(e.target.checked)}
+                  disabled={isOptimizing}
+                  size="small"
+                  sx={{
+                    color: '#666666',
+                    '&.Mui-checked': {
+                      color: '#ff5722'
+                    }
+                  }}
+                />
+              }
+              label={
+                <Typography
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.85em',
+                    color: localConstraints.allow_unrealistic_taper ? '#ff5722' : '#666666'
+                  }}
+                >
+                  Allow unrealistic taper ratios
+                </Typography>
+              }
+            />
+          </Tooltip>
+        </Collapse>
       </Box>
 
       <Button

@@ -27,3 +27,24 @@ export const computeSensitivity = async (request: SensitivityRequest): Promise<S
   const response = await api.post<SensitivityResponse>('/sensitivity', request)
   return response.data
 }
+
+export interface LaunchNtopRequest {
+  run_id?: string
+  loa: number
+  span: number
+  le_sweep_p1: number
+  le_sweep_p2: number
+  te_sweep_p1: number
+  te_sweep_p2: number
+  panel_break: number
+}
+
+export interface LaunchNtopResponse {
+  status: string
+  message: string
+}
+
+export const launchNtop = async (request: LaunchNtopRequest): Promise<LaunchNtopResponse> => {
+  const response = await api.post<LaunchNtopResponse>('/launch-ntop', request)
+  return response.data
+}
